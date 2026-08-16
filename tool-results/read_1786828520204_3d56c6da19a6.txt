@@ -1,0 +1,702 @@
+     1→# Worklog — Real-Time Quiz Activity Platform
+     2→
+     3→Project: Mentimeter-style real-time quiz platform (single-page app at `/`).
+     4→Stack: Next.js 16 + TypeScript + Tailwind + shadcn/ui + Prisma(SQLite) + Socket.io mini-service.
+     5→
+     6→## Architecture decisions (read before working)
+     7→- Only the `/` route is user-visible. The app is a single-page client-side-routed app.
+     8→  A Zustand store (`useAppStore`) holds `{ role, screen, params }` and switches views.
+     9→- Database: Prisma + SQLite (`prisma/schema.prisma`). Models: Admin, Activity, Question, Participant, Answer.
+    10→- Auth: Custom JWT-in-cookie auth for admins. Password hashing via bcryptjs. `APP_SECRET` env signs JWTs.
+    11→  Helpers in `src/lib/auth.ts`.
+    12→- Realtime: Socket.io mini-service at `mini-services/quiz-realtime/` on port **3003**.
+    13→  - Path MUST be `/` (Caddy gateway rule).
+    14→  - Frontend connects via `io("/?XTransformPort=3003")`.
+    15→  - One room per activity: `activity:<activityId>`.
+    16→  - The socket service uses Prisma directly to mutate live state (currentQuestion, questionStartedAt, questionEndsAt, status) AND broadcasts events. This makes the socket service the source of truth for LIVE operations.
+    17→- REST APIs (Next.js `src/app/api/*`): used for setup/CRUD — auth, admins, activities, questions, publish, participant join, results fetch.
+    18→- Activity status state machine: DRAFT -> PUBLISHED -> LIVE -> COMPLETED (PRD §21).
+    19→- Access code: 6-digit numeric, unique among active (non-COMPLETED) activities, generated on publish.
+    20→- Anti-duplicate answer: `@@unique([participantId, questionId])` (PRD §28).
+    21→- NEVER send `correctOption` to participants before question ends (PRD §33).
+    22→- Timer is server-side: `questionStartedAt` + `questionEndsAt` (PRD §29).
+    23→
+    24→## Socket event contract (server <-> clients)
+    25→Admin -> server:
+    26→  - `host_activity` { activityId, adminToken }  (admin joins as host)
+    27→  - `start_activity` { activityId }
+    28→  - `start_question` { activityId, questionId }   (also used for "next question")
+    29→  - `end_question` { activityId }
+    30→  - `end_activity` { activityId }
+    31→
+    32→Participant -> server:
+    33→  - `join_activity` { activityId, sessionId }   (participant joins room; sessionId from REST /api/join)
+    34→  - `submit_answer` { activityId, questionId, sessionId, selectedOption }
+    35→
+    36→Server -> room `activity:<activityId>`:
+    37→  - `participant_joined` { count, displayName }
+    38→  - `participant_left` { count }
+    39→  - `activity_started` { activityId }
+    40→  - `question_started` { activityId, questionId, questionOrder, totalQuestions, questionText, options:[{key,label}], timeLimit, startedAt, endsAt }  (NOTE: no correctOption)
+    41→  - `results_updated` { activityId, questionId, counts: {A,B,C,D}, total, participantCount }
+    42→  - `question_ended` { activityId, questionId, correctOption, counts, total }  (reveals correct answer)
+    43→  - `activity_completed` { activityId }
+    44→
+    45→Server -> participant (via REST GET /api/activities/[code]/state for reconnect/sync):
+    46→  Returns current activity status, current question (without correctOption if still live), participantCount.
+    47→
+    48→## REST API surface (Next.js `src/app/api/`)
+    49→- POST   /api/auth/login            { email, password } -> { admin } + sets cookie
+    50→- POST   /api/auth/logout
+    51→- GET    /api/auth/me
+    52→- GET    /api/admins                 (SUPER_ADMIN only)
+    53→- POST   /api/admins                 (SUPER_ADMIN only)
+    54→- PATCH  /api/admins/[id]
+    55→- DELETE /api/admins/[id]
+    56→- GET    /api/activities
+    57→- POST   /api/activities
+    58→- GET    /api/activities/[id]        (includes questions)
+    59→- PATCH  /api/activities/[id]
+    60→- DELETE /api/activities/[id]
+    61→- POST   /api/activities/[id]/publish   (sets status PUBLISHED + generates accessCode)
+    62→- POST   /api/activities/[id]/questions
+    63→- PATCH  /api/questions/[id]
+    64→- DELETE /api/questions/[id]
+    65→- POST   /api/join                    { accessCode, displayName } -> { sessionId, activityId, title }
+    66→- GET    /api/activities/[code]/state (participant current state, no correctOption while live)
+    67→- POST   /api/questions/[id]/answer   (fallback submit, also via socket) { sessionId, selectedOption }
+    68→- GET    /api/activities/[id]/results (final results summary)
+    69→- GET    /api/questions/[id]/results  (per-question distribution)
+    70→
+    71→---
+    72→Task ID: 1
+    73→Agent: main (orchestrator)
+    74→Task: Setup Prisma schema, env, seed admin, install deps.
+    75→
+    76→Work Log:
+    77→- Installed deps: bcryptjs, jsonwebtoken, socket.io, socket.io-client (+ types).
+    78→- Wrote `.env` with DATABASE_URL, Supabase creds (reserved), APP_SECRET, REALTIME_PORT.
+    79→- Wrote `prisma/schema.prisma` with Admin, Activity, Question, Participant, Answer models.
+    80→- Ran `bun run db:push` — schema in sync.
+    81→
+    82→Stage Summary:
+    83→- DB schema ready. Admin/Activity/Question/Participant/Answer tables created in SQLite.
+    84→- Next: Task 2-a (backend APIs) and 2-b (socket service) will be dispatched in parallel.
+    85→
+    86→---
+    87→Task ID: 2-b
+    88→Agent: general-purpose (socket.io realtime service)
+    89→Task: Build the Socket.io realtime mini-service at mini-services/quiz-realtime/.
+    90→
+    91→Work Log:
+    92→- Created `mini-services/quiz-realtime/` with: package.json, tsconfig.json, prisma.ts, types.ts, index.ts.
+    93→- package.json:
+    94→  - name "quiz-realtime", private, "type":"module".
+    95→  - `dev` script: `bun --hot index.ts` (auto-restart REQUIRED by system rules).
+    96→  - `start` script: `bun index.ts`.
+    97→  - `typecheck` script: `bunx tsc --noEmit`.
+    98→  - deps: socket.io ^4.8.3, @prisma/client ^6.11.1 (versions matched to the parent project so bun dedupes to the parent node_modules).
+    99→  - devDeps: prisma ^6.11.1, @types/node ^20, bun-types ^1.3.4, typescript ^5.
+   100→- tsconfig.json: bun-style (target/module ESNext, moduleResolution bundler, types:["bun-types"], strict, noEmit, allowImportingTsExtensions:false), include ["**/*.ts"].
+   101→- prisma.ts: exports `db` = a PrismaClient pointing at the SHARED SQLite file. datasource URL = process.env.DATABASE_URL ?? `file:/home/z/my-project/db/custom.db` (hardcoded absolute fallback). Does NOT install its own @prisma/client — bun walks up the directory tree and resolves to the PARENT project's `@prisma/client` + the generated client at /home/z/my-project/node_modules/.prisma/client (which knows the full schema). A globalThis guard reuses the same client across `bun --hot` reloads.
+   102→- types.ts: self-contained copy of the realtime-relevant DTOs from src/lib/types.ts (OptionKey, AnswerDistribution, QuestionStartedPayload, QuestionEndedPayload, ResultsUpdatedPayload, ParticipantJoinedPayload, ActivityStartedPayload, ActivityCompletedPayload, ParticipantLeftPayload). Copied rather than imported across project boundaries so the mini-service type-checks independently.
+   103→- index.ts: implements the full Socket.io server.
+   104→  - Port 3003 HARDCODED (const PORT = 3003), path: '/' (REQUIRED by gateway).
+   105→  - CORS: origin '*' (gateway handles routing; browser uses `io("/?XTransformPort=3003")` which is same-origin).
+   106→  - Room model: `activity:<activityId>` via socket.join(room).
+   107→  - Participant -> server events:
+   108→    - `join_activity` { activityId, sessionId }: verifies Participant row, updates lastSeenAt, joins room, stores socket.data={role:'participant', activityId, sessionId, displayName}, broadcasts `participant_joined` { activityId, count, displayName } to the room, AND syncs late-joiner state — emits `question_started` (no correctOption) to the joining socket if a question is live, OR `question_ended` (with correctOption + distribution) if the question deadline already passed and we're awaiting reveal. Supports an optional ack callback returning { ok, count }.
+   109→    - `submit_answer` { activityId, questionId, sessionId, selectedOption }: validates OptionKey, verifies activity is LIVE, verifies questionId === activity.currentQuestionId, verifies now <= questionEndsAt, verifies participant belongs to activity, creates an Answer row (isCorrect = selectedOption === question.correctOption), catches Prisma P2002 unique violation as idempotent no-op, recomputes distribution, broadcasts `results_updated` { activityId, questionId, distribution, participantCount } to the room.
+   110→  - Admin -> server events:
+   111→    - `host_activity` { activityId, adminId }: verifies Admin exists, joins room, stores socket.data={role:'admin', activityId, adminId}, acks with current participantCount.
+   112→    - `start_activity` { activityId }: verifies admin host + activity.status==='PUBLISHED', updates status='LIVE', startedAt=now, endedAt=null, currentQuestionId=null, questionStartedAt=null, questionEndsAt=null; broadcasts `activity_started` { activityId }.
+   113→    - `start_question` { activityId, questionId }: verifies admin host + LIVE, finds question (verifies belongs to activity), computes endsAt = now + timeLimit*1000ms, updates activity.{currentQuestionId, questionStartedAt, questionEndsAt}, clears the autoEndedQuestions set for this activity, builds QuestionStartedPayload (WITHOUT correctOption) and broadcasts `question_started` to the room.
+   114→    - `end_question` { activityId }: verifies admin host + LIVE + currentQuestionId set, sets activity.questionEndsAt=now (force-end, keep currentQuestionId for reveal), builds QuestionEndedPayload { correctOption, distribution }, marks `${activityId}:${questionId}` in autoEndedQuestions to suppress duplicate auto-fire, broadcasts `question_ended` to the room (REVEALS correct answer).
+   115→    - `end_activity` { activityId }: verifies admin host + LIVE, updates status='COMPLETED', endedAt=now, currentQuestionId=null, questionStartedAt=null, questionEndsAt=null; broadcasts `activity_completed` { activityId }.
+   116→  - Auto-expire ticker: setInterval every 1s scans activities where status==='LIVE' AND currentQuestionId IS NOT NULL AND questionEndsAt < now. For each, if `${activityId}:${questionId}` is NOT already in autoEndedQuestions, it builds QuestionEndedPayload (with correctOption + distribution) and broadcasts `question_ended` (the reveal), then adds the key to the set. The set is cleared per-activity whenever `start_question` is invoked for that activity, so a new question auto-expires fresh.
+   117→  - Disconnect: logs role+activity; intentionally does NOT emit `participant_left` for MVP (counts are DB-based via db.participant.count, so they're always accurate regardless of how many live sockets a participant has).
+   118→  - Graceful shutdown: SIGINT/SIGTERM handlers close io + httpServer + db.$disconnect().
+   119→  - Logging: one-line console.log/console.error for server boot, every connection, every state transition (host/join/start_activity/start_question/end_question/end_activity/auto-end/answer submitted), and all errors.
+   120→- Did NOT touch: src/app/**, src/lib/**, prisma/schema.prisma, or the main project's package.json. No separate schema.prisma created in the mini-service. No Redis or external state.
+   121→- Type-check: `cd /home/z/my-project/mini-services/quiz-realtime && bunx tsc --noEmit` passes with EXIT_CODE=0 (no type errors).
+   122→- Smoke test: `bun index.ts` boots cleanly and logs `[server] quiz-realtime listening on http://0.0.0.0:3003 (path=/)`; Prisma client resolves from the parent project's node_modules without a local install.
+   123→
+   124→Stage Summary:
+   125→- Events implemented (matches worklog contract):
+   126→  - Participant->server: `join_activity`, `submit_answer`.
+   127→  - Admin->server: `host_activity`, `start_activity`, `start_question`, `end_question`, `end_activity`.
+   128→  - Server->room `activity:<activityId>`: `participant_joined`, `activity_started`, `question_started` (no correctOption), `results_updated`, `question_ended` (reveals correctOption), `activity_completed`.
+   129→  - Late-joiner / reconnect sync is handled inside `join_activity` (replays `question_started` or `question_ended` to the joining socket).
+   130→  - Auto-expire ticker fires `question_ended` exactly once when a question's server-side deadline passes.
+   131→- Payloads use the same shape as src/lib/types.ts (distribution: {A,B,C,D,total}; QuestionStartedPayload does NOT include correctOption).
+   132→- Start the service: `cd mini-services/quiz-realtime && bun run dev` (auto-restart on file change).
+   133→  - Production: `cd mini-services/quiz-realtime && bun run start`.
+   134→  - Verify types: `cd mini-services/quiz-realtime && bun run typecheck`.
+   135→- Frontend connects with `io("/?XTransformPort=3003")` (same-origin; gateway routes to port 3003).
+   136→- Caveat / NOTE for frontend (Task 3): the worklog socket contract listed `host_activity { activityId, adminToken }` but the detailed task spec for THIS service said `host_activity { activityId, adminId }` with "Verify an Admin with adminId exists". I implemented the `adminId` variant (verify Admin row by id) as that was the more specific instruction in this task. Frontend should send `{ activityId, adminId }` (the admin's `id` field from `GET /api/auth/me`). If the frontend instead has only a JWT token, the orchestrator can either (a) have the frontend send adminId by reading it from /api/auth/me, or (b) extend this handler to also accept `adminToken` and verify it. Option (a) is simpler and already works.
+   137→- Caveat: `participant_left` is intentionally NOT emitted for MVP (counts are DB-based and always accurate). Can be added later if a live "x viewers" indicator is needed.
+   138→
+   139→---
+   140→Task ID: 2-a
+   141→Agent: full-stack-developer (backend API routes)
+   142→Task: Build all REST API route handlers.
+   143→
+   144→Work Log:
+   145→- Created `src/lib/serializers.ts` with DTO shaping helpers (`toAdminDTO`, `toActivityDTO`, `toQuestionDTO`), `computeDistribution` for AnswerDistribution, and `isValidOption` for A/B/C/D validation. All DTOs strip `passwordHash` and convert Date objects to ISO strings.
+   146→- Auth routes:
+   147→  - `src/app/api/auth/login/route.ts` — POST. Verifies credentials, signs session, sets httpOnly `quiz_admin_token` cookie via `setAuthCookie`. Returns `{ admin: AdminDTO }` or 401.
+   148→  - `src/app/api/auth/logout/route.ts` — POST. `clearAuthCookie` + `{ ok: true }`.
+   149→  - `src/app/api/auth/me/route.ts` — GET. Returns current admin or 401.
+   150→- Admins routes (SUPER_ADMIN only via `getAdminFromRequest().role` check):
+   151→  - `src/app/api/admins/route.ts` — GET (list), POST (create; default role ADMIN; catches P2002 -> 409 duplicate email).
+   152→  - `src/app/api/admins/[id]/route.ts` — PATCH (name/email/password[optional]/role), DELETE (prevents self-deletion -> 409).
+   153→- Activities routes:
+   154→  - `src/app/api/activities/route.ts` — GET (filter `createdBy: admin.id`, includes `_count` of questions & participants, ordered by `createdAt desc`), POST (create DRAFT, `createdBy = admin.id`).
+   155→  - `src/app/api/activities/[id]/route.ts` — GET (with questions ordered by `questionOrder`, includes `correctOption`), PATCH (DRAFT-only, else 409), DELETE (any status, Prisma cascade).
+   156→  - `src/app/api/activities/[id]/publish/route.ts` — POST. DRAFT+≥1 question required. Generates unique `accessCode` via `generateUniqueAccessCode`. Idempotent if already PUBLISHED. LIVE/COMPLETED -> 409.
+   157→  - `src/app/api/activities/[id]/questions/route.ts` — POST. Validates `correctOption ∈ {A,B,C,D}`, auto-sets `questionOrder = max+1`, default `timeLimit 30`. Activity must be DRAFT.
+   158→  - `src/app/api/activities/[id]/results/route.ts` — GET admin only. Computes totalQuestions, totalParticipants, participation %, averageScore, highestScore, per-question distribution. All percentages rounded to 1 decimal.
+   159→- Question routes:
+   160→  - `src/app/api/questions/[id]/route.ts` — PATCH (any subset of fields; DRAFT-only) and DELETE (DRAFT-only; renumbers remaining questions to sequential 1..N inside a `$transaction` for atomicity).
+   161→  - `src/app/api/questions/[id]/answer/route.ts` — POST `{ sessionId, selectedOption }`. Validates: question exists, activity LIVE, question is current, `now <= questionEndsAt`, participant exists and belongs to activity. Catches P2002 -> 409 "already answered". Returns `{ ok: true, isCorrect }`.
+   162→  - `src/app/api/questions/[id]/results/route.ts` — GET admin only. Returns `{ questionId, distribution, correctOption }`.
+   163→- Participant routes:
+   164→  - `src/app/api/join/route.ts` — POST `{ accessCode, displayName }`. Looks up Activity by `accessCode` where status IN (PUBLISHED, LIVE). Validates displayName non-empty (trims; truncates to 30 chars). Generates `sessionId` via `crypto.randomUUID()`. Creates Participant row with `lastSeenAt = now`. Retries up to 3× on P2002 (collision astronomically unlikely). Returns JoinResponse.
+   165→  - `src/app/api/activities/[id]/state/route.ts` — GET (param value treated as `accessCode`). Returns ActivityStateResponse. While LIVE + question active + `now < questionEndsAt` -> `currentQuestion` WITHOUT `correctOption`. While LIVE + question elapsed but admin hasn't advanced -> `lastReveal` with `{ correctOption, distribution }` computed from Answer table. COMPLETED -> lastReveal of last question (or null). PUBLISHED -> both null.
+   166→
+   167→Key decisions / caveats:
+   168→- **Dynamic segment conflict**: Next.js App Router does not allow two distinct dynamic segment names (`[id]` and `[code]`) at the same path level. The state endpoint (URL `/api/activities/{accessCode}/state`) is therefore placed inside the shared `/api/activities/[id]/` folder, but the param value is destructured as `id: accessCode` and treated as the accessCode in the handler. URL contract is preserved (`/api/activities/{accessCode}/state`); only the param variable name differs. Documented with a comment at the top of the file.
+   169→- All datetimes returned to client are `.toISOString()` strings (handled by `toActivityDTO` / `toAdminDTO`).
+   170→- Activity status stored as plain strings ('DRAFT' | 'PUBLISHED' | 'LIVE' | 'COMPLETED') per schema note. Never rely on Prisma enum since SQLite has none.
+   171→- All admin-protected routes use `const admin = await getAdminFromRequest(); if (!admin) return 401`.
+   172→- Activity ownership enforced via `findFirst({ where: { id, createdBy: admin.id } })` so a 404 (not 403) is returned for foreign activities (avoids leaking existence).
+   173→- For question routes, we fetch the question with `include: { activity: true }` and verify `activity.createdBy === admin.id` (returns 403 for foreign questions).
+   174→- The `answer` endpoint logic is duplicated with the socket service (task 2-b) by design — both must agree. Documented in worklog §REST API surface.
+   175→- No bugs found in `src/lib/auth.ts`, `src/lib/db.ts`, `src/lib/types.ts`, or `prisma/schema.prisma`.
+   176→
+   177→Stage Summary:
+   178→Endpoints created (all return JSON via `NextResponse.json`):
+   179→- POST   /api/auth/login                              (sets cookie, returns AdminDTO)
+   180→- POST   /api/auth/logout                              (clears cookie)
+   181→- GET    /api/auth/me                                  (returns AdminDTO or 401)
+   182→- GET    /api/admins                                   (SUPER_ADMIN only)
+   183→- POST   /api/admins                                   (SUPER_ADMIN only; default role ADMIN)
+   184→- PATCH  /api/admins/[id]                              (SUPER_ADMIN only)
+   185→- DELETE /api/admins/[id]                              (SUPER_ADMIN only; 409 on self-delete)
+   186→- GET    /api/activities                               (own activities with counts)
+   187→- POST   /api/activities                               (creates DRAFT)
+   188→- GET    /api/activities/[id]                          (with questions, includes correctOption)
+   189→- PATCH  /api/activities/[id]                          (DRAFT-only, else 409)
+   190→- DELETE /api/activities/[id]                          (any status)
+   191→- POST   /api/activities/[id]/publish                  (DRAFT+≥1 question; idempotent if PUBLISHED)
+   192→- POST   /api/activities/[id]/questions                (DRAFT-only)
+   193→- GET    /api/activities/[id]/results                  (admin only; full summary)
+   194→- GET    /api/activities/[accessCode]/state            (participant; no correctOption while live)
+   195→- PATCH  /api/questions/[id]                            (DRAFT-only)
+   196→- DELETE /api/questions/[id]                            (DRAFT-only; renumbers siblings)
+   197→- POST   /api/questions/[id]/answer                     (REST fallback; same logic as socket)
+   198→- GET    /api/questions/[id]/results                   (admin only; distribution + correctOption)
+   199→- POST   /api/join                                      (creates Participant; returns JoinResponse)
+   200→
+   201→Verification:
+   202→- `bun run lint` passes with exit code 0 (no errors/warnings introduced).
+   203→- End-to-end smoke test (via curl against running dev server) passed:
+   204→  login (200) -> me (200 with cookie) -> create activity (201) -> add question (201) -> publish (200 + accessCode) -> join (201 + sessionId) -> state by accessCode (200, currentQuestion=null since PUBLISHED) -> results (200) -> delete (200).
+   205→  Admin flows: list (200), create duplicate email (409), create new admin (201), delete self (409), delete other admin (200), patch deleted admin (404).
+   206→
+   207→Files created (15 route files + 1 helper):
+   208→- src/lib/serializers.ts
+   209→- src/app/api/auth/login/route.ts
+   210→- src/app/api/auth/logout/route.ts
+   211→- src/app/api/auth/me/route.ts
+   212→- src/app/api/admins/route.ts
+   213→- src/app/api/admins/[id]/route.ts
+   214→- src/app/api/activities/route.ts
+   215→- src/app/api/activities/[id]/route.ts
+   216→- src/app/api/activities/[id]/publish/route.ts
+   217→- src/app/api/activities/[id]/questions/route.ts
+   218→- src/app/api/activities/[id]/results/route.ts
+   219→- src/app/api/activities/[id]/state/route.ts
+   220→- src/app/api/questions/[id]/route.ts
+   221→- src/app/api/questions/[id]/answer/route.ts
+   222→- src/app/api/questions/[id]/results/route.ts
+   223→- src/app/api/join/route.ts
+   224→
+   225→---
+   226→Task ID: 4-a
+   227→Agent: full-stack-developer (admin foundation screens)
+   228→Task: Build landing, admin-login, admin-dashboard, admin-management, final-results screens.
+   229→
+   230→Work Log:
+   231→- Read worklog.md fully + read shared components (app-footer.tsx, result-bars.tsx), store.ts, api-client.ts, types.ts, hooks/use-countdown.ts, globals.css, and the shadcn/ui primitives (button, card, dialog, alert-dialog, dropdown-menu, tabs, table, select, badge, skeleton, avatar, input, label, textarea, toggle-group) to align with exact prop APIs.
+   232→- NOTE on AppHeader: the task spec listed `src/components/shared/app-header.tsx` as already done, but the file does NOT exist on disk, and the DO NOT list forbids touching `src/components/shared/*`. Resolved by inlining a per-screen header (logo + theme toggle + admin dropdown) inside each admin screen instead of importing a shared AppHeader. The header markup is consistent across dashboard / management / results; landing and login use a simpler minimal top bar. When AppHeader lands later, the inlined markup can be lifted into the shared component without touching screen logic.
+   233→- Overwrote the 5 owned stubs with real implementations:
+   234→  1. `landing-screen.tsx` — full-viewport hero on `bg-stage` gradient. Minimal top bar (logo + theme toggle). Big headline with `gradient-text` accent, two CTAs ("Host a quiz" → `admin-dashboard` if `admin` set else `admin-login`, and "Join a quiz" → `participant-join`). 3 feature cards (Create / Go live / See results) with chart-color icons. 3-step "How it works" strip. Framer-motion fade-in-up entrance. `AppFooter` with `mt-auto` (parent is `min-h-screen flex flex-col`).
+   235→  2. `admin-login-screen.tsx` — centered `Card` form (email + password) on `bg-stage`. Auto-navigates to dashboard if `admin` is set on mount. Submits via `api.post<{admin:AdminDTO}>('/api/auth/login', {email,password})`; on success: `setAdmin`, `navigate('admin-dashboard')`, `toast.success`. On `ApiError`: `toast.error(message)`. Button shows spinner + disabled while loading. Demo credentials hint card (`bg-muted/40` + monospace `admin@quiz.local / admin123`). "Back to home" ghost button in footer. Framer-motion card entrance. AppFooter with mt-auto.
+   236→  3. `admin-dashboard-screen.tsx` — the biggest screen. Guards with a 400ms "booting" grace period so the page-level `/api/auth/me` bootstrap can hydrate `admin` before redirecting to login (avoids login → dashboard flicker). Greeting ("Good morning/afternoon/evening, {firstName}") with `gradient-text` name. Stats row: 3 stat cards (Total activities, Published & Live, Total participants). Search input + status filter `Tabs` (All / Drafts / Published / Live / Completed). Activity list rendered as cards with `framer-motion AnimatePresence` enter/exit + `layout` for reflow. Per-status action buttons: DRAFT → Edit + Delete; PUBLISHED → Present + View code + Delete; LIVE → Present; COMPLETED → Results + Delete. Status badges: LIVE = amber with pulsing dot, PUBLISHED = emerald, DRAFT/COMPLETED = muted. View code dialog shows the 6-digit accessCode large with copy-to-clipboard. Create dialog (title + description) → POST → navigate to `admin-editor` with `activityId`. Delete via `AlertDialog` → DELETE → refresh list. Empty state with `Presentation` icon + contextual copy depending on whether any activities exist. Long list scroll container uses `max-h-[60vh] overflow-y-auto scroll-thin`.
+   237→  4. `admin-management-screen.tsx` — SUPER_ADMIN only. Guard: redirects non-super-admins back to dashboard with toast. Table (shadcn `Table`) with Name (avatar + initials), Email, Role badge (Super Admin = `chart-5` purple, Admin = muted), Created (`formatDistanceToNow`), Actions. Search box filters by name/email. Add Admin dialog: name, email, password, role select (Admin / Super Admin). Edit dialog: same fields; password optional (leave blank = unchanged). PATCH also updates the in-store admin if the user edits themselves. Delete: AlertDialog confirm; self-row delete button is disabled (server returns 409 anyway, but disabling improves UX). Loading skeletons during fetch. AppHeader (inlined) with back-to-dashboard button + admin dropdown including Super Admin Management entry.
+   238→  5. `final-results-screen.tsx` — gets `activityId` from `useAppStore(s => s.params).activityId`. Parallel fetches `GET /api/activities/${id}` (for question option labels — `ActivityResultsResponse` does NOT include `optionA..D`) and `GET /api/activities/${id}/results` (for stats + distribution). Builds `labelsByQ: Record<questionId, {A,B,C,D}>` map. Hero: "Quiz Complete" badge + activity title + 5-card stat grid (Questions, Participants, Participation %, Avg score, Top score) using `chart-1..5` accent colors. Per-question breakdown: card per question with question-order pill, response count, "% correct" callout, and `ResultBars` showing distribution with `correctOption` highlighted. 404 / no-activityId handled gracefully with a "Results not found" state. AppHeader (inlined) with back-to-dashboard. AppFooter.
+   239→- Color discipline: ZERO use of indigo / blue Tailwind classes anywhere. Status badges and stat-card accents use `chart-1..5` (fuchsia / emerald / amber / coral / purple from globals.css) plus emerald/amber for semantic correctness (PUBLISHED/correct). Buttons and primary actions use `bg-primary` / `text-primary-foreground`. All screens verified to look correct in both light & dark themes by using theme variables only.
+   240→- Responsive: every screen is mobile-first. Header collapses (hide logo+wordmark on small, show on sm+), stats grid is 1-col → 3-col (dashboard) / 2-col → 5-col (results), activities list is single column always, action buttons wrap on small screens, search is full-width on mobile.
+   241→- Sticky footer: all 5 screens use `<div className="min-h-screen flex flex-col">` with `<AppFooter />` last (the footer uses `mt-auto`). Verified by reading app-footer.tsx — it has `mt-auto` baked into the `<footer>` element itself.
+   242→- Touch targets: buttons are `h-9`/`h-10`/`h-11` (≥36px, primary CTAs are h-12). Icon-only buttons have `aria-label`.
+   243→- Accessibility: `<header>` / `<main>` / `<section aria-label>` / `<nav>`-like structures. `sr-only` text on icon-only buttons ("Edit", "Delete" labels are `sr-only sm:not-sr-only sm:ml-1.5`). Form `<Label htmlFor>` wired to inputs. `aria-label` on icon buttons and search inputs.
+   244→- Loading states: dashboard shows stat-card skeletons + 3 activity-card skeletons while fetching; management shows 4 row skeletons; results shows hero + 5-stat + 3-question skeletons.
+   245→- Used `toast` from `sonner` (already mounted via `SonnerToaster` in layout.tsx) for all success/error feedback.
+   246→- Lint: `bun run lint` passes with EXIT=0 (no errors, no warnings) across the whole project — including my 5 files. The other agents' stubs were initially causing a parse error in `participant-question-screen.tsx`, but that has since been resolved by the parallel agent and the full lint run now reports clean.
+   247→
+   248→Stage Summary:
+   249→- 5 screens delivered (all real implementations, no placeholders):
+   250→  - `src/components/screens/landing-screen.tsx`
+   251→  - `src/components/screens/admin-login-screen.tsx`
+   252→  - `src/components/screens/admin-dashboard-screen.tsx`
+   253→  - `src/components/screens/admin-management-screen.tsx`
+   254→  - `src/components/screens/final-results-screen.tsx`
+   255→- All 5 follow the design rules: `min-h-screen flex flex-col` + `AppFooter`, framer-motion subtle animations, shadcn/ui primitives, theme-variable colors only (no indigo/blue), `chart-1..5` accents, rounded-2xl cards, responsive.
+   256→- Screens wire up cleanly to the existing API surface (`/api/auth/login|logout|me`, `/api/activities` + `/results`, `/api/admins` + `[id]`) and the Zustand store (`navigate`, `setAdmin`, `theme`, `toggleTheme`).
+   257→- Caveat: AppHeader is inlined per-screen (not centralized in `src/components/shared/app-header.tsx`) because that shared file does not exist on disk and the task DO NOT list forbids touching `src/components/shared/*`. If a future task creates the shared AppHeader, the per-screen header markup in dashboard/management/results can be lifted into it without changing any screen-level logic.
+   258→- Caveat: To populate the per-question option labels in `final-results-screen`, I make a parallel `GET /api/activities/${id}` fetch (the `/results` response only includes question text + distribution + correctOption, not the option labels). If a future backend change adds `optionA..D` to the results payload, the activity fetch can be dropped.
+   259→- Bootstrap handling: each guarded admin screen (dashboard, management, results) waits 400ms before checking `admin` so the page-level `/api/auth/me` bootstrap (in `src/app/page.tsx`) has time to hydrate the store. This avoids a race where a cookie-authenticated user is bounced to login on first paint.
+   260→- Did NOT touch any other agent's stubs, `src/lib/*`, `src/components/shared/*`, `src/components/ui/*`, `src/app/*`, `prisma/*`, `mini-services/*`, or `src/hooks/*`.
+   261→
+   262→---
+   263→Task ID: 4-b
+   264→Agent: full-stack-developer (editor + realtime screens)
+   265→Task: Build activity-editor, live-presentation, participant-join, participant-lobby, participant-question, participant-completed.
+   266→
+   267→Work Log:
+   268→- Overwrote 6 stub screen files under src/components/screens/.
+   269→- Activity editor (activity-editor-screen.tsx):
+   270→  - Two-pane desktop layout (left = numbered question list with delete-on-hover; right = question Card editor with framer-motion AnimatePresence on slide change). Mobile collapses to stacked.
+   271→  - Top bar with inline-editable Activity Title (PATCH on blur/Enter, only while DRAFT), status Badge (color per status), and contextual actions: DRAFT shows Publish button; PUBLISHED/LIVE/COMPLETED shows the 6-digit access code + copy button + Present button.
+   272→  - Add-question button POSTs with placeholder defaults ("New question" + "Option A-D", correctOption=A, timeLimit=30) because the backend rejects empty fields; the new question is selected immediately.
+   273→  - Save (PATCH /api/questions/[id]) disabled while clean/invalid; an "Unsaved changes" amber badge appears when dirty. Delete uses AlertDialog confirm.
+   274→  - Publish flow: dialog → confirm → POST /api/activities/[id]/publish → success subdialog showing access code text-5xl mono with copy + Present-now buttons.
+   275→  - Loads { activity: ActivityDTO } shape (backend wraps in `{ activity }`). 401 redirects to admin-login; 404 to admin-dashboard.
+   276→- Live presentation (live-presentation-screen.tsx):
+   277→  - FULL-SCREEN, NO header/footer. Wrapper `<div className="dark ...">` forces dark theme descendants (projector-friendly) with explicit dark plum `bg-[oklch(0.16_0.02_320)] text-white bg-stage-dark`.
+   278→  - Phases: loading → lobby → ready → question → reveal → completed. Lobby shows huge `text-6xl/7xl font-mono` access code + participant count + Start Activity. "ready" (after activity_started) shows Start Question 1. Question phase shows timer (useCountdown, red+pulse ≤5s), question text-4xl, 2x2 option cards colored via OPTION_TINTS (chart-1..4), live ResultBars panel with "X of Y answered". Reveal phase highlights correct option green and renders ResultBars with correctOption prop.
+   279→  - Controls: End Question (reveals) → Next Question (start_question for order+1) or End Activity (if last).
+   280→  - Socket wiring EXACTLY per contract: emits host_activity {activityId, adminId: admin.id}, start_activity, start_question, end_question, end_activity. Listens for participant_joined, activity_started, question_started, results_updated, question_ended, activity_completed. All listeners cleaned up via socket.off in useEffect returns. Handlers memoized via useCallback to keep them stable.
+   281→  - Reload recovery: GET /api/activities/[id]; if LIVE+currentQuestionId, GET /api/questions/[id]/results to populate distribution + correctOption; if Date.now() < endsAt → phase 'question', else phase 'reveal'. PUBLISHED → lobby. COMPLETED → completed. host_activity emit is guarded by `if (!activityId || !admin) return` so it fires after the bootstrap resolves admin from /api/auth/me.
+   282→- Participant join (participant-join-screen.tsx):
+   283→  - 2-step mobile-first flow with framer-motion slide transitions (AnimatePresence mode="wait"). Step 1 = InputOTP 6-digit (auto-focus, accepts paste, numeric-only filter, 14px-tall slots). Step 2 = name Input (max 30). On submit POST /api/join with both fields; on success setParticipant({sessionId, activityId, title, displayName, accessCode}) and navigate participant-lobby. On ApiError → toast.error + back to step 1.
+   284→  - "I'm a host" link navigates to admin-login.
+   285→- Participant lobby (participant-lobby-screen.tsx):
+   286→  - Emits join_activity on mount; listens for question_started (→ participant-question), activity_started (→ updates label), activity_completed (→ participant-completed), participant_joined (→ updates count). Also calls GET /api/activities/[accessCode]/state on mount to recover (LIVE+currentQuestion → navigate question; COMPLETED → navigate completed).
+   287→  - Big "You're in!" + greeting with displayName + activity title + animated pulse dot + participant count from socket.
+   288→- Participant question (participant-question-screen.tsx):
+   289→  - Phases: connecting → answering → submitted → reveal. On mount, GET state to sync; emits join_activity; listens for question_started (reset+answering), question_ended (reveal), activity_completed (navigate completed).
+   290→  - Answering: countdown timer (red ≤5s), question text-3xl, 4 large 80px-min answer buttons (2x2 on sm+) colored with chart-1..4. Tap → setSelected + emit submit_answer + phase=submitted.
+   291→  - Submitted: green check animation + "Answer locked in" + spinner.
+   292→  - Reveal: shows options with correct green + selected amber + ResultBars(distribution, labels, correctOption, selectedOption). "Waiting for next question…" with spinner. Handles edge case where lastReveal exists but no current question (e.g. reload mid-reveal) — shows a stripped reveal view with just the ResultBars.
+   293→- Participant completed (participant-completed-screen.tsx):
+   294→  - Full-screen bg-stage with floating celebratory colored dots (chart-1/2/3) animating downward. PartyPopper spring entrance + "Quiz complete!" + greeting + "Join another quiz" button (setParticipant(null) + navigate participant-join).
+   295→- Lint passes for ALL 6 files: `cd /home/z/my-project && bun run lint` exits 0.
+   296→  - Initial lint error on live-presentation (`react-hooks/set-state-in-effect` from `void fetchActivity()` in useEffect) fixed by inlining the async fetch into the effect body with a `cancelled` flag (the standard async-effect pattern).
+   297→- Did NOT touch any files outside the 6 screen stubs (no shared/, ui/, lib/, hooks/, api/, or other agents' 5 stubs).
+   298→
+   299→Stage Summary:
+   300→- All 6 screens delivered with full socket wiring per the contract in worklog §Socket event contract.
+   301→- Realtime is wired fire-and-forget: admin emits (host_activity/start_activity/start_question/end_question/end_activity) and participant emits (join_activity/submit_answer) are sent without awaiting; server broadcasts back to the room and the relevant screen listens for participant_joined, activity_started, question_started, results_updated, question_ended, activity_completed — switching local phase state and re-rendering with framer-motion AnimatePresence.
+   302→- Reconnect/reload handled on every screen via REST: editor/presentation call GET /api/activities/[id]; participant screens call GET /api/activities/[accessCode]/state to recover currentQuestion or lastReveal. The socket service's late-joiner sync (inside join_activity) is also active as a second safety net for participants.
+   303→- REST response shapes unwrapped correctly: GET/PATCH activity → `{ activity }`; POST/PATCH question → `{ question }`; POST /api/join → JoinResponse direct; GET state → ActivityStateResponse direct; GET /api/questions/[id]/results → `{ questionId, distribution, correctOption }` direct.
+   304→- Caveat: `src/components/shared/app-header.tsx` does NOT exist yet (another agent owns it). The activity-editor builds its own inline sticky header (back button + inline title input + status badge + actions) so it works whether or not AppHeader materializes. None of the other 5 screens need a header (4 are immersive full-screen, participant-join is centered card).
+   305→- Caveat: AppHeader was listed in the task spec as already-done, but the file is absent on disk; the editor screen would not import it even if present (the inline header is sufficient).
+   306→
+   307→---
+   308→Task ID: 6
+   309→Agent: main (orchestrator)
+   310→Task: Final integration, persistence fix, and end-to-end verification.
+   311→
+   312→Work Log:
+   313→- Fixed two frontend/backend response-shape mismatches found during browser testing:
+   314→  - admin-dashboard create handler: `api.post<ActivityDTO>` -> `api.post<{activity:ActivityDTO}>` (backend wraps single-resource responses).
+   315→  - final-results fetch: `api.get<ActivityDTO>` -> `api.get<{activity:ActivityDTO}>`.
+   316→- Created `src/components/shared/app-header.tsx` (had been missed initially) using `useSyncExternalStore` for hydration-safe theme icon (avoids the `set-state-in-effect` lint rule).
+   317→- Added `src/instrumentation.ts`: spawns the realtime mini-service (`bun run dev` in mini-services/quiz-realtime) as a DETACHED child of the Next.js dev server at boot. This is the key persistence fix — the dev server is adopted by init (PID 1), so its child (the socket service) survives across Bash-tool invocations. Enabled via `experimental.instrumentationHook` in next.config.ts (forces a server restart to load it).
+   318→- Wrote helper scripts: `scripts/seed.ts` (default admin), `scripts/reset-activities.ts` (reset LIVE/COMPLETED -> PUBLISHED + clear participants/answers), `scripts/verify-realtime.sh` (automated e2e).
+   319→
+   320→End-to-end verification (via agent-browser through the Caddy gateway on :81):
+   321→- Landing, admin login, dashboard, activity editor, question builder, publish (access code 586553), live presentation lobby — all render and function.
+   322→- Realtime socket connects through Caddy (`io("/?XTransformPort=3003")` -> :81 -> :3003). Confirmed `[socket] connected` in browser console.
+   323→- Admin: Start Activity -> Start Question -> question slide visible ("What does the 'typeof' operator return for an array?").
+   324→- Participant (separate mobile session): Join with code 586553 -> name "Priya" -> received the LIVE question in real-time ("QUESTION 1 OF 1", server-driven countdown 00:04).
+   325→- Server-side timer auto-expired (PRD §29) -> `question_ended` fired -> participant saw the reveal ("CORRECT"). Admin saw live response count.
+   326→- Admin: End Activity -> activity COMPLETED.
+   327→- 8/9 automated checks passed; the 1 "FAIL" was a test-script grep using `snapshot -i` (interactive-only) which excludes heading text — not an app defect.
+   328→
+   329→Stage Summary:
+   330→- App is production-ready and verified end-to-end. Both the Next.js dev server (PID 1164) and the realtime socket service (spawned via instrumentation, PID 10707) are running and persistent.
+   331→- Default admin: admin@quiz.local / admin123 (SUPER_ADMIN).
+   332→- A pre-built demo activity "JavaScript Fundamentals" (1 MCQ) is PUBLISHED with access code 586553, ready for the user to Present.
+   333→- Lint: clean. Dev log: clean (no runtime errors).
+   334→- The user can preview at the Preview Panel (right side) or "Open in New Tab". Real-time (live questions, participant joining, results) works through the gateway.
+   335→
+   336→---
+   337→Task ID: 99
+   338→Agent: main (orchestrator)
+   339→Task: Make all edges sharp (no rounded corners) and rename app title to "Atom Play".
+   340→
+   341→Work Log:
+   342→- Set `--radius: 0` in `:root` of `src/app/globals.css` (drives shadcn `rounded-sm/md/lg/xl`).
+   343→- Added global override in `@layer base`: `*, *::before, *::after { border-radius: 0 !important; }` to force sharp edges on every element (covers literal `rounded-full`, `rounded-2xl`, etc.).
+   344→- Renamed app title metadata in `src/app/layout.tsx`: title -> "Atom Play", author -> "Atom Play".
+   345→- Replaced visible "QuizStage" brand text with "Atom Play" in:
+   346→  - src/components/shared/app-header.tsx
+   347→  - src/components/shared/app-footer.tsx
+   348→  - src/components/screens/landing-screen.tsx
+   349→  - src/components/screens/admin-login-screen.tsx
+   350→  - src/components/screens/admin-dashboard-screen.tsx
+   351→  - src/components/screens/admin-management-screen.tsx
+   352→  - src/components/screens/final-results-screen.tsx
+   353→- Ran `bun run lint` — clean.
+   354→
+   355→Stage Summary:
+   356→- All UI corners are now sharp (square edges) across the whole app.
+   357→- App is now branded "Atom Play" everywhere it appears to users (header, footer, login, dashboard, admin management, final results) plus the document title metadata.
+   358→- No backend/schema changes; existing seeded data and realtime service are unaffected.
+   359→
+   360→---
+   361→Task ID: 100
+   362→Agent: main (orchestrator)
+   363→Task: Add small professional animations to home page (with backup of previous version).
+   364→
+   365→Work Log:
+   366→- Created `/home/z/my-project/backups/` directory.
+   367→- Backed up `src/app/page.tsx` -> `backups/page.tsx.bak.20260815-172417`.
+   368→- Backed up `src/components/screens/landing-screen.tsx` -> `backups/landing-screen.tsx.bak.20260815-172417`.
+   369→- Rewrote `landing-screen.tsx` with tasteful, professional micro-animations using framer-motion (already in deps):
+   370→  - Shared `EASE = [0.22, 1, 0.36, 1]` cubic-bezier for a smooth, professional feel.
+   371→  - `staggerContainer` + `fadeUp` Variants to orchestrate staggered entrance of hero badge, title, subtitle, CTAs, hint.
+   372→  - Header slide-down entrance (opacity + y).
+   373→  - Logo: gentle hover scale + a slow 6s infinite sparkle rotation.
+   374→  - Theme toggle: hover scale + rotate 15deg, tap scale-down.
+   375→  - Hero badge: pulsing Radio icon (scale 1 -> 1.15 -> 1, 2s loop).
+   376→  - CTA buttons: hover lift (y: -2), tap settle, and a nudge on the Host-quiz ArrowRight on hover.
+   377→  - Hint line: pulsing Zap icon (opacity 0.6 -> 1 -> 0.6, 2.4s loop).
+   378→  - Feature cards: scroll-into-view staggered fade-up (`whileInView`, once) + hover lift (y: -4) + icon hover scale/rotate.
+   379→  - How-it-works steps: scroll-into-view stagger + horizontal nudge on hover (x: 4).
+   380→- Ran `bun run lint` — clean, no errors.
+   381→- Verified in Agent Browser: page title "Atom Play", hero renders "Run live quizzes your audience will love", 3 buttons present, 0 runtime errors, 12 animated elements confirmed via inline opacity/transform styles.
+   382→
+   383→Stage Summary:
+   384→- Home page now has small, professional micro-animations: staggered entrances, hover lifts, pulsing accent icons, and a subtle logo sparkle — all subtle and non-distracting.
+   385→- Previous home page safely backed up in `/home/z/my-project/backups/` for rollback if needed.
+   386→- No backend, schema, or other-screen changes.
+   387→
+   388→---
+   389→Task ID: 101
+   390→Agent: main (orchestrator)
+   391→Task: Make all card borders sharp across ALL places in the app.
+   392→
+   393→Work Log:
+   394→- Root cause analysis: previously set `--radius: 0` + a `!important` rule inside `@layer base`, but cards still rendered with rounded corners because:
+   395→  1. shadcn's `@theme inline` only overrides `--radius-sm/md/lg/xl`; `--radius-2xl/3xl/4xl` kept Tailwind v4 defaults (e.g. `--radius-2xl: 1rem = 16px`).
+   396→  2. `--radius-xl: calc(var(--radius) + 4px)` resolves to `4px`, not `0`, even with `--radius: 0`.
+   397→  3. A `!important` universal rule placed INSIDE `@layer base` does not reliably beat Tailwind v4 utility classes in the `utilities` layer.
+   398→- Fix in `src/app/globals.css`:
+   399→  - Added explicit `--radius-xs/--radius-sm/--radius-md/--radius-lg/--radius-xl/--radius-2xl/--radius-3xl/--radius-4xl: 0` overrides inside `@theme inline` so EVERY `rounded-*` utility resolves to 0.
+   400→  - Moved the `border-radius: 0 !important` universal rule OUT of `@layer base` to a top-level (un-layered) declaration so it beats all Tailwind utilities regardless of cascade-layer ordering.
+   401→  - Also pinned the four logical corner long-hands (`border-start-start-radius`, etc.) to 0 `!important` for full coverage.
+   402→  - Kept `--radius: 0` in `:root` for backwards compatibility.
+   403→- No source `rounded-*` classes needed editing (224 occurrences across 48 files) — the CSS approach is global, future-proof, and survives shadcn component re-generation.
+   404→- Ran `bun run lint` — clean.
+   405→- Browser-verified across multiple screens:
+   406→  - Landing page: max border-radius across entire page = 0px, 0 non-zero samples.
+   407→  - Admin login screen: max border-radius = 0px.
+   408→  - Admin dashboard (12 cards): all card radii = 0px, max across page = 0px.
+   409→  - Participant join screen: max border-radius = 0px.
+   410→  - No runtime errors or console issues on any screen.
+   411→
+   412→Stage Summary:
+   413→- All cards (and every other element) now have fully sharp square corners in every screen of the app — landing, login, dashboard, editor, live presentation, results, admin management, participant join/lobby/question/completed.
+   414→- Fix is purely CSS-driven (theme variable overrides + top-level !important universal rule), so it automatically applies to future components too.
+   415→
+   416→---
+   417→Task ID: 102
+   418→Agent: main (orchestrator)
+   419→Task: Change master admin credentials, remove demo credentials from login, restructure home page topbar.
+   420→
+   421→Work Log:
+   422→- Updated `scripts/seed.ts`:
+   423→  - Changed email -> `admin@atomcode.dev`, password -> `Mr@1811321`.
+   424→  - Made idempotent: `deleteMany` legacy `admin@quiz.local` admin, then `upsert` by new email (so re-running always re-applies the latest password + role).
+   425→  - Forces role `SUPER_ADMIN` on both create and update branches.
+   426→- Ran `bun run scripts/seed.ts` -> new super admin created (id `cmsunqcvx0000q9j4uuu14rf7`); legacy admin deleted.
+   427→- Updated `src/components/screens/admin-login-screen.tsx`:
+   428→  - Removed the entire "Demo credentials" hint block (KeyRound icon + dashed box + `admin@quiz.local / admin123` pre block).
+   429→  - Removed now-unused `KeyRound` import.
+   430→  - Updated email placeholder from `you@quiz.local` -> `you@example.com`.
+   431→- Updated `src/components/screens/landing-screen.tsx` topbar:
+   432→  - Logo + "Atom Play" text remain on the far-left (justify-between keeps them at the content left edge).
+   433→  - Right side now groups: theme switcher + new "Admin" button (ShieldCheck icon, size sm, h-10).
+   434→  - "Admin" button navigates to dashboard if already signed in, else login (preserved previous "Host a quiz" navigation logic).
+   435→  - Removed the "Host a quiz" button from the hero section; "Join a quiz" remains in the hero.
+   436→  - Updated imports: removed `ArrowRight` (no longer used), added `ShieldCheck`.
+   437→- Fixed a stray `n` typo introduced during the multi-edit (line 109).
+   438→- Ran `bun run lint` — clean.
+   439→- Browser-verified end-to-end:
+   440→  - Landing topbar: logo at x=32 (far left), theme switcher at x=1151, Admin button at x=1248 (rightmost, header width 1280). `adminIsRightmost: true`.
+   441→  - Admin button click -> navigates to login screen.
+   442→  - Login screen: `hasDemoCredentials: false`, `hasOldEmailHint: false` (no more `admin@quiz.local` anywhere).
+   443→  - Logged in with `admin@atomcode.dev` / `Mr@1811321` -> success, dashboard renders with greeting "Good afternoon, Super" and activities list.
+   444→  - No runtime errors, no console errors.
+   445→
+   446→Stage Summary:
+   447→- Master admin credentials are now email `admin@atomcode.dev` / password `Mr@1811321` (role SUPER_ADMIN). Old `admin@quiz.local` admin removed from DB.
+   448→- Login screen no longer exposes any demo credentials.
+   449→- Landing topbar: logo+text on far-left, theme switcher + "Admin" button on far-right (Admin is the rightmost element). "Host a quiz" removed from hero; "Join a quiz" stays.
+   450→- Seed script is now idempotent (upsert), so future credential changes just need a seed re-run.
+   451→
+   452→---
+   453→Task ID: 103
+   454→Agent: main (orchestrator)
+   455→Task: Add player's UOID (roll number / employee ID) field on the Join quiz page, above the Display name.
+   456→
+   457→Work Log:
+   458→- Schema (`prisma/schema.prisma`): added `uoid String?` to Participant model + `@@unique([activityId, uoid])` (per-activity uniqueness; SQLite allows multiple NULLs so existing rows are safe).
+   459→- Ran `bun run db:push` — schema in sync, Prisma Client regenerated with the new field.
+   460→- API (`src/app/api/join/route.ts`):
+   461→  - Accepts `uoid` in the request body alongside `accessCode` + `displayName`.
+   462→  - Validates `uoid` is non-empty (returns 400 if missing), trims, caps at 40 chars.
+   463→  - Pre-checks per-activity uniqueness via `findFirst({ where: { activityId, uoid } })` and returns HTTP 409 "This ID has already joined this quiz" on conflict.
+   464→  - Also handles the P2002 unique-constraint violation from a concurrent race as a 409.
+   465→  - Returns `uoid` in the `JoinResponse`.
+   466→- Types (`src/lib/types.ts`): added `uoid: string | null` to `ParticipantDTO`, `JoinResponse`, and `ParticipantJoinedPayload`.
+   467→- Store (`src/lib/store.ts`): added `uoid: string | null` to `ParticipantSession`.
+   468→- Socket service (`mini-services/quiz-realtime/`): added `uoid?: string | null` to `ParticipantJoinedPayload` (types.ts) and emit `participant.uoid` in the `participant_joined` event (index.ts). Non-breaking addition for forward-compat.
+   469→- Join screen (`src/components/screens/participant-join-screen.tsx`):
+   470→  - Added `uoid` state.
+   471→  - Added "Player ID (UOID)" input field **above** the "Display name" field in Step 2, with label, placeholder ("e.g. roll number or employee ID"), maxLength 40, required, and a helper hint ("Your roll number / employee ID · unique per quiz").
+   472→  - Updated the submit button to be disabled unless BOTH `uoid` and `displayName` are non-empty.
+   473→  - Sends `uoid` in the `/api/join` POST body and stores `res.uoid` in the participant session.
+   474→- Lobby screen (`src/components/screens/participant-lobby-screen.tsx`): added a UOID confirmation badge ("ID: <uoid>") rendered as a monospace pill below the greeting, so the player sees their ID was captured.
+   475→- Ran `bun run lint` — clean.
+   476→- Dev server issue + fix: the running Next.js dev server had a stale Prisma Client in memory (didn't know about `uoid` → 500 "Unknown argument `uoid`"). Fixed by killing all stale next/bun processes, clearing `.next` cache, and restarting `bun run dev` in a detached subshell so the freshly-generated Prisma Client was loaded. Server is now stable (PID 8048).
+   477→- Browser-verified end-to-end:
+   478→  - Join page Step 2: "Player ID (UOID)" field renders ABOVE "Display name" (verified via bounding-box tops: uoidTop=322, nameTop=420, uoidAboveName=true).
+   479→  - Both fields marked `required`; "Join quiz" button disabled until both are filled.
+   480→  - Filled UOID "ROLL-7777" + name "Sam Player" → join succeeded (HTTP 201), navigated to lobby.
+   481→  - Lobby shows greeting "Hi, Sam Player" + UOID badge "ID: ROLL-7777".
+   482→  - Duplicate UOID test via curl: second join with same UOID "EMP-2048" → HTTP 409 "This ID has already joined this quiz".
+   483→  - No runtime errors, no console errors.
+   484→
+   485→Stage Summary:
+   486→- Players now must enter a UOID (roll number / employee ID) on the Join quiz page, positioned above the Display name field. The UOID is stored on the Participant record, is unique per activity (no duplicate joins with the same ID), and is confirmed back in the lobby as a badge. The `participant_joined` socket event also carries the uoid for future admin-side display.
+   487→
+   488→---
+   489→Task ID: 104
+   490→Agent: main (orchestrator)
+   491→Task: Add "Clone activity (with a different channel/access code)" and "Reset completed activity (so it can be presented again)" features.
+   492→
+   493→Work Log:
+   494→- Backend — NEW endpoint POST /api/activities/[id]/clone (`src/app/api/activities/[id]/clone/route.ts`):
+   495→  - Allowed from any source status (DRAFT/PUBLISHED/LIVE/COMPLETED); source is NOT mutated.
+   496→  - Body (all optional): `{ title?: string, publishImmediately?: boolean }`.
+   497→  - Composes a non-empty title: custom title if provided, else source.title; appends " (Copy)" unless the title already ends with "(copy)" (case-insensitive).
+   498→  - Creates a NEW activity owned by the current admin, copies description + ALL questions (preserving questionOrder, options, correctOption, timeLimit).
+   499→  - If `publishImmediately=true` AND source has ≥1 question → new activity is created directly in PUBLISHED state with a fresh unique 6-digit access code (a DIFFERENT channel from the original). If publishImmediately=true but 0 questions → falls back to DRAFT and returns a `warning` field.
+   500→  - Returns HTTP 201 `{ activity, warning }`.
+   501→- Backend — NEW endpoint POST /api/activities/[id]/reset (`src/app/api/activities/[id]/reset/route.ts`):
+   502→  - Allowed ONLY when status === 'COMPLETED'; otherwise HTTP 409 with a clear message.
+   503→  - Refuses if the activity has 0 questions (HTTP 409).
+   504→  - Body (optional): `{ regenerateAccessCode?: boolean }` (default false → keep same code).
+   505→  - In a single `db.$transaction`: `participant.deleteMany({ activityId })` (cascade wipes answers), then `activity.update` setting status='PUBLISHED', accessCode (kept or freshly generated), currentQuestionId=null, questionStartedAt=null, questionEndsAt=null, startedAt=null, endedAt=null.
+   506→  - Questions are PRESERVED (untouched).
+   507→  - Returns HTTP 200 `{ activity }` with the updated (now PUBLISHED) activity.
+   508→- Frontend — admin dashboard (`src/components/screens/admin-dashboard-screen.tsx`):
+   509→  - Added `Copy`, `RotateCcw`, `KeyRound` icons from lucide-react.
+   510→  - Added `Checkbox` (shadcn) + `RadioGroup`/`RadioGroupItem` (shadcn) imports.
+   511→  - Added `ActivityWithCount` interface fields `questionCount?` + `participantCount?` to match the actual GET /api/activities response shape.
+   512→  - Added new state: cloneTarget/cloneTitle/clonePublishNow/cloning; resetTarget/resetMode/resetting.
+   513→  - Added `openClone(activity)`, `handleClone()`, `handleReset()` handlers (all using `api.post` + sonner toast feedback).
+   514→  - Wired `onClone` + `onReset` callbacks into every ActivityCard.
+   515→  - Added a "Clone" icon button (ghost, primary-tinted, with `aria-label` + `title`) to EVERY status block (DRAFT/PUBLISHED/LIVE/COMPLETED).
+   516→  - Added a "Reset" button (outline, amber-tinted, with RotateCcw icon + text) ONLY in the COMPLETED status block.
+   517→  - Clone dialog: title input (pre-filled with "<source> (Copy)"), "Publish immediately with a new access code" checkbox (default checked), Cancel + Clone buttons.
+   518→  - Reset dialog: description shows participant count being wiped, RadioGroup with "Keep the same access code #XXXXXX (Recommended)" + "Generate a new access code" options, Cancel + amber "Reset activity" button.
+   519→  - Drive-by fix: `qCount`/`pCount` and the stats `participants` reducer now also read flat `questionCount`/`participantCount` fields (the API returns those, not nested `_count`), so the dashboard correctly shows real question/participant counts (was always "0" before).
+   520→- Verification:
+   521→  - `bun run lint` clean.
+   522→  - 5 curl smoke tests pass:
+   523→    1. Clone LIVE activity publishImmediately=true → HTTP 201, new PUBLISHED activity, new access code 868016 (different from source 674885), all 5 questions copied.
+   524→    2. Clone LIVE activity publishImmediately=false → HTTP 201, new DRAFT activity, accessCode null, all 5 questions copied.
+   525→    3. Reset on LIVE activity → HTTP 409 "Cannot reset an activity in status LIVE…".
+   526→    4. Reset COMPLETED with regenerateAccessCode=false → status COMPLETED→PUBLISHED, accessCode kept (868016→868016), participants 1→0, answers 5→0, questions 5 preserved, all live-state fields null.
+   527→    5. Reset COMPLETED with regenerateAccessCode=true → status COMPLETED→PUBLISHED, NEW accessCode (868016→430858), all wipe/keep behavior identical.
+   528→- Agent Browser end-to-end (logged in as admin@atomcode.dev):
+   529→  - Verified Clone button renders on DRAFT, PUBLISHED, LIVE, COMPLETED cards.
+   530→  - Opened Clone dialog: title field pre-filled with "<source> (Copy)", "Publish immediately with a new access code" checkbox checked by default.
+   531→  - Submitted clone → new PUBLISHED card appeared at the top of the list with "View code" button, toast "Cloned & published — new code XXXXXX".
+   532→  - Marked a test activity COMPLETED → "Reset" button appeared on its card alongside [Results][Clone][Delete].
+   533→  - Opened Reset dialog: radio group shows "Keep the same access code #999888 (Recommended)" selected + "Generate a new access code".
+   534→  - Submitted with "Keep" → activity returned to PUBLISHED, "Reset"/"Results" buttons gone, "Present"/"View code" buttons appeared, toast "Reset complete — access code 999888".
+   535→  - Repeated with "Generate" radio → toast "Reset complete — access code 795492" (new code).
+   536→  - DB spot-check after each reset: status, accessCode, currentQuestionId, startedAt, endedAt, participants, answers, questions — all exactly as expected.
+   537→  - Re-join test: POST /api/join with the new code 795492 returned HTTP 201 + a fresh sessionId — proves the reset activity is fully usable again.
+   538→  - Console + page errors: clean throughout (only standard React DevTools / HMR logs).
+   539→  - Drive-by verified: question/participant counts on dashboard cards now display real numbers (was always "0" before this fix).
+   540→- Cleaned up all test activities created during verification; dashboard now shows only the original "Test Activity" (LIVE).
+   541→
+   542→Stage Summary:
+   543→- New admin capability 1 — CLONE: any activity (any status) can be cloned into a fresh DRAFT or, with one checkbox, directly into a PUBLISHED clone with a brand-new unique 6-digit access code. This satisfies "copy clone the activity with different channel and access key".
+   544→- New admin capability 2 — RESET: a COMPLETED activity can be reset back to PUBLISHED, wiping all participants + their answers while keeping the questions intact. The admin chooses whether to keep the same access code (so participants can re-join with the same code) or generate a fresh one. After reset, the activity is immediately presentable and joinable again. This satisfies "reset after the completion and start the same".
+   545→- API surface added: `POST /api/activities/[id]/clone`, `POST /api/activities/[id]/reset`. No schema changes (reuses existing Activity/Question/Participant/Answer models + state machine).
+   546→- Frontend: 2 new dialogs + 2 new card actions, fully integrated with the existing toast/dashboard refresh flow. Also fixed a pre-existing bug where activity cards always showed "0 questions / 0 participants" because the dashboard read `_count` while the API returns flat `questionCount`/`participantCount`.
+   547→
+   548→---
+   549→Task ID: 105
+   550→Agent: main (orchestrator)
+   551→Task: Fix React hydration error on the theme toggle button ("Hydration failed because the server rendered HTML didn't match the client" — server rendered <Moon>, client rendered <Sun>).
+   552→
+   553→Root cause:
+   554→- `src/lib/store.ts` read `localStorage.getItem('quiz-app-state')` DURING store initialization:
+   555→  `const persisted = typeof window !== 'undefined' ? loadPersisted() : { theme: 'light' }`
+   556→- On the server: `typeof window === 'undefined'` → `theme: 'light'` → renders `<Moon>`.
+   557→- On the client first-render (hydration): `typeof window !== 'undefined'` → reads localStorage → may return `'dark'` → tries to render `<Sun>`.
+   558→- This divergence is exactly what React's hydration check catches.
+   559→- `app-header.tsx` already had the correct `useSyncExternalStore` mounted guard, but `landing-screen.tsx`, `admin-login-screen.tsx`, `admin-dashboard-screen.tsx`, `admin-management-screen.tsx`, and `final-results-screen.tsx` each had their OWN inline theme toggle buttons WITHOUT the guard, so they triggered the error.
+   560→
+   561→Work Log:
+   562→- `src/lib/store.ts`:
+   563→  - Removed the `typeof window !== 'undefined' ? loadPersisted() : ...` branch from the store initializer. The store now ALWAYS initializes with `theme: 'light'`, so server and client first-render produce identical markup.
+   564→  - Extracted a `getInitialPersistedTheme()` helper that reads localStorage (client-only) for use by the ThemeProvider after mount.
+   565→  - Added a clear comment explaining WHY we don't read localStorage during init.
+   566→- `src/components/theme-provider.tsx`:
+   567→  - Added a mount-only `useEffect` that calls `getInitialPersistedTheme()` and `setTheme(persisted)` if the persisted value differs from the current store value. This applies the user's saved theme AFTER hydration (no SSR/CSR markup divergence).
+   568→  - Kept the existing effect that toggles the `dark` class on `<html>` when `theme` changes.
+   569→- `src/components/shared/theme-toggle.tsx` (NEW):
+   570→  - A single shared `<ThemeToggle iconClassName? size? className? />` component.
+   571→  - Uses `useSyncExternalStore(() => () => {}, () => true, () => false)` for the `mounted` flag (same pattern `app-header.tsx` already used).
+   572→  - Renders `<Moon>` (the light-mode icon, which matches the SSR output) until mounted, then swaps to `<Sun>` if `theme === 'dark'`.
+   573→  - Also sets `suppressHydrationWarning` on the button as a belt-and-suspenders guard.
+   574→- Replaced inline theme toggle buttons in 5 screens with `<ThemeToggle className="h-10 w-10 rounded-xl" />`:
+   575→  - `src/components/screens/landing-screen.tsx` (the screen in the error trace)
+   576→  - `src/components/screens/admin-login-screen.tsx`
+   577→  - `src/components/screens/admin-dashboard-screen.tsx`
+   578→  - `src/components/screens/admin-management-screen.tsx`
+   579→  - `src/components/screens/final-results-screen.tsx` (also dropped `theme`/`onToggleTheme` props from the internal `ResultsHeader` sub-component)
+   580→- Also refactored `src/components/shared/app-header.tsx` to use the shared `<ThemeToggle>` (it previously had its own inline toggle with the mounted guard — now consolidated into one place).
+   581→- Removed the now-unused `Sun`/`Moon` icon imports and `theme`/`toggleTheme` store reads from all 6 files.
+   582→- `src/app/layout.tsx`:
+   583→  - Added an inline `<script dangerouslySetInnerHTML>` in `<head>` that runs BEFORE React hydration. It reads `localStorage.getItem('quiz-app-state')` and applies the `dark` class to `<html>` if the persisted theme is dark.
+   584→  - This prevents a flash-of-wrong-theme (FOUC) for users with dark mode saved — the inline script paints dark immediately, then React hydrates with the light store state (no mismatch because `<html>` has `suppressHydrationWarning`), then the ThemeProvider's mount effect syncs the store to dark.
+   585→
+   586→Verification:
+   587→- `bun run lint` clean (0 errors, 0 warnings).
+   588→- Agent Browser end-to-end:
+   589→  - Cleared localStorage + cookies, reloaded landing page → no hydration errors, no page errors, no console errors.
+   590→  - Set `localStorage['quiz-app-state'] = {"theme":"dark"}`, reloaded landing page → NO hydration error (previously this was the failure case). `<html>` correctly has the `dark` class (applied by the pre-hydration script), and the toggle icon is `lucide-sun` (correct for dark mode).
+   591→  - Clicked the toggle → theme switched dark→light, `<html>` class went from `"dark"` to `""`, icon swapped Sun→Moon. localStorage persisted `{"theme":"light"}`.
+   592→  - Reloaded → theme persisted as light, icon is `lucide-moon`, no hydration errors.
+   593→  - Set back to dark, reloaded, navigated Landing → Login → Dashboard → no hydration errors on any screen. Toggle icon correctly shows Sun on all three screens.
+   594→  - Final dev.log check: zero hydration / "did not match" / "Uncaught" lines.
+   595→
+   596→Stage Summary:
+   597→- Hydration error on the theme toggle is FIXED. The store no longer reads localStorage during SSR initialization, so server and client first-render produce identical markup. The persisted theme is applied post-mount by the ThemeProvider, and an inline pre-hydration script applies the `dark` class to `<html>` to prevent a flash of the wrong theme.
+   598→- DRY win: the theme toggle button that was copy-pasted into 6 places (5 screens + app-header) is now a single shared `<ThemeToggle>` component. Adding the mounted guard once fixes the bug everywhere and prevents regressions in any future screen that uses it.
+   599→
+   600→---
+   601→Task ID: 106
+   602→Agent: main (orchestrator)
+   603→Task: On the activity present (live) screen, make the Exit button open a confirmation popup and, on confirm, reset the activity back to "start mode" (PUBLISHED) so it can be presented again.
+   604→
+   605→Work Log:
+   606→- Backend — extended the existing POST /api/activities/[id]/reset endpoint to also accept LIVE status (in addition to COMPLETED). Updated the inline comment to explain the new LIVE branch + the rationale (the live-presentation "Exit" flow uses it).
+   607→  - File: src/app/api/activities/[id]/reset/route.ts
+   608→  - Status check now: `if (activity.status !== 'LIVE' && activity.status !== 'COMPLETED')` → HTTP 409 otherwise.
+   609→  - The reset transaction body is unchanged (deleteMany participants, set status=PUBLISHED, clear live-state fields, keep or regenerate accessCode).
+   610→- Types — added `ActivityResetPayload { activityId: string }` to:
+   611→  - src/lib/types.ts (shared by the Next.js app)
+   612→  - mini-services/quiz-realtime/types.ts (local copy used by the socket service)
+   613→- Socket service (mini-services/quiz-realtime/index.ts) — added a new `reset_activity` socket event handler (admin → server) that:
+   614→  - Verifies the sender is the admin currently hosting this activity (`data.role === 'admin'` && `data.activityId === activityId`).
+   615→  - Broadcasts `activity_reset` to ALL clients in the activity room (admin + participants).
+   616→  - Does NOT mutate the DB — the REST endpoint does that. The broadcast is fired FIRST so participants have a chance to navigate away before their Participant row is wiped.
+   617→- Frontend — live-presentation-screen.tsx (src/components/screens/live-presentation-screen.tsx):
+   618→  - Added imports: AlertDialog family from '@/components/ui/alert-dialog'; RotateCcw from lucide-react.
+   619→  - Added state: `confirmExit` (bool, controls dialog visibility) and `resetting` (bool, drives the "Resetting…" spinner state).
+   620→  - Renamed the Exit button's onClick from `exitToDashboard` (which silently navigated away) to `openExitConfirm` (opens the dialog). The button is now disabled while `resetting` is true and shows a spinner in place of the LogOut icon during reset.
+   621→  - Added `handleConfirmExit()` — fires on confirm:
+   622→    1. Emits `socket.emit('reset_activity', { activityId })` so connected participants are sent back to the join screen.
+   623→    2. Calls `POST /api/activities/{id}/reset` with `{ regenerateAccessCode: false }` (keep the same access code).
+   624→    3. Toasts success/error.
+   625→    4. Closes the dialog, sets `exiting=true`, navigates to `admin-dashboard`.
+   626→  - Added the AlertDialog UI: title "End activity and reset to start mode?", description dynamically includes the activity title, current participant count (uses the in-memory `participantCount`), and the kept access code. Buttons: "Cancel" + amber "End & reset". The action button shows a Loader2 spinner + "Resetting…" while the REST call is in flight (uses `e.preventDefault()` on the AlertDialogAction click to keep the dialog open during the async work).
+   627→- Frontend — participant-lobby-screen.tsx and participant-question-screen.tsx:
+   628→  - Added an `activity_reset` socket listener that calls `setParticipant(null)` and `navigate('participant-join')`. This sends the participant back to the join screen when the host aborts the session via Exit, before their Participant row is wiped by the REST call.
+   629→  - Added the corresponding `ActivityResetPayload` import + listener cleanup in the useEffect return.
+   630→
+   631→Verification:
+   632→- `bun run lint` — clean (0 errors, 0 warnings).
+   633→- Direct socket smoke test (bun script connecting to port 3003): emitting `reset_activity` after `host_activity` correctly broadcasts `activity_reset` back to the same room. Confirms the new socket handler is loaded by the running `bun --hot` service.
+   634→- Agent Browser end-to-end (via Caddy gateway on port 81, the same path the real user takes through the Preview Panel):
+   635→  1. Logged in as admin@atomcode.dev.
+   636→  2. Dashboard: clicked "Present" on the LIVE "Test Activity" → live presentation screen rendered with "Start activity" button.
+   637→  3. Clicked "Start activity" → screen transitioned to "Activity is live!" with "Start question 1" button. Console: `[socket] connected <id>` (socket.io connected through Caddy).
+   638→  4. Clicked the top-right "Exit" button → AlertDialog appeared: title "End activity and reset to start mode?", body "This will end the live session for "Test Activity" and remove all 0 participants and their answers. The activity will be returned to start mode (access code 674885 kept) so it can be presented again." with Cancel + amber "End & reset" buttons.
+   639→  5. Cancel path verified: clicked Cancel → dialog closed, stayed on live presentation screen.
+   640→  6. Re-opened dialog, clicked "End & reset" → button briefly showed spinner + "Resetting…" → navigated back to dashboard. Toast: "Activity reset to start mode".
+   641→  7. Dashboard activity card now showed PUBLISHED-state buttons: Present / View code / Clone / Delete (previously only showed Present because the activity was LIVE).
+   642→  8. "View code" dialog confirmed access code is still 674885 (kept the same).
+   643→- DB spot-check after the second reset test (started LIVE, then exited+reset):
+   644→  - status: PUBLISHED (was LIVE) ✓
+   645→  - accessCode: 674885 (kept) ✓
+   646→  - currentQuestionId / startedAt / endedAt: null ✓
+   647→  - questions: 5 (preserved) ✓
+   648→  - participants: 0 (wiped) ✓
+   649→  - answers: 0 ✓
+   650→- Re-join test: `POST /api/join` with the kept access code 674885 returned HTTP 201 with a fresh sessionId — proves the reset activity is immediately re-usable with the same code.
+   651→- Console + dev.log: no runtime errors, no hydration errors, no "did not match" warnings related to this change. (Some pre-existing stale `[socket] connect_error: timeout` lines were from earlier in the session when the browser was hitting port 3000 directly instead of going through Caddy on port 81 — going through port 81 makes the socket connect cleanly.)
+   652→
+   653→Stage Summary:
+   654→- New admin capability on the live presentation screen: the "Exit" button now opens a confirmation popup ("End activity and reset to start mode?"). On confirm, the activity is reset to PUBLISHED ("start mode") — participants + answers wiped, questions preserved, same access code kept — and the admin is returned to the dashboard. The activity can immediately be presented again with the same code.
+   655→- New socket event `reset_activity` (admin→server) → `activity_reset` (server→room broadcast) ensures connected participants are sent back to the join screen BEFORE their Participant rows are deleted, so they aren't stuck on a stale "Waiting for next question…" screen.
+   656→- Reused the existing REST `/api/activities/[id]/reset` endpoint (extended to allow LIVE status). No schema changes.
+   657→
+   658→---
+   659→Task ID: 107
+   660→Agent: main (orchestrator)
+   661→Task: Make the activity code show page (lobby phase of the live presentation screen) more interactive — show live users joining as glassmorphism circles with unique 70-color borders + first-letter initials, add an oil-centrifugal swirl effect in the center that's moving, and move the access code + join count to the top and the Start button to the bottom-right.
+   662→
+   663→Work Log:
+   664→- Backend — NEW endpoint GET /api/activities/[id]/participants (`src/app/api/activities/[id]/participants/route.ts`):
+   665→  - Admin-only. Returns `{ participants: [{ id, displayName, uoid, joinedAt }] }` ordered by joinedAt asc.
+   666→  - Used by the live presentation screen on mount to render bubbles for participants who joined before the admin opened the page (late-host scenario).
+   667→- Frontend — live-presentation-screen.tsx (`src/components/screens/live-presentation-screen.tsx`):
+   668→  - Added a `ParticipantBubble` interface + `participants` state array.
+   669→  - On mount, in the existing `load()` effect, after setting phase='lobby', fetches `/api/activities/[id]/participants` and populates the list (so pre-existing joins appear immediately).
+   670→  - Extended `onParticipantJoined` socket callback to append the new participant to the list (with a dedup check on displayName+uoid) in addition to updating the count.
+   671→  - Added a 70-color palette generated by hue rotation around the full color wheel (each entry has border / glow / text / soft variants). Deterministic assignment via a hash of displayName + index so the same person always gets the same color and visually-nearby bubbles don't clash.
+   672→  - Added a 4-ring orbital layout (RING_RADII = [120, 190, 260, 330], caps = [8, 12, 16, 24]) so any number of participants stays readable. Each ring rotates at a different speed (42/60/78/96s per revolution) and direction (alternate). Each bubble counter-rotates with the same duration so its letter stays upright.
+   673→  - Redesigned the lobby phase UI:
+   674→    - TOP: glass card with "Access code" label + large mono code + copy button (left), and a glass "joined count" badge with pulsing emerald dot (right). Wrapped in `flex-wrap` so it stays tidy on mobile.
+   675→    - CENTER: an "oil centrifugal" effect — two large counter-rotating blurred conic-gradients (outer 640px rotating clockwise over 32s, inner 440px counter-clockwise over 24s, both `mix-blend-mode: screen` and blurred 70/45px) layered over a dark "eye" in the middle. On top of the oil, the orbital rings of glassmorphism bubbles (each: `border-2 backdrop-blur-md rounded-full`, 56px mobile / 56-64px desktop, with a colored glow box-shadow + colored first-letter initial). Bubbles spring in (scale 0→1, spring stiffness 220 / damping 14) when a new participant joins.
+   676→    - BOTTOM RIGHT: large "Start activity" button with a primary shadow.
+   677→    - Empty state: when no participants have joined, a pulsing "Waiting for participants to join…" hint is shown in the center over the oil swirl.
+   678→    - Responsive: orbital container scales to 0.78 on mobile via `scale-[0.78] sm:scale-100` so the rings fit in the smaller viewport.
+   679→  - Fixed a layout bug in the initial draft: oil-layer motion.divs had `position: absolute` inside a flex parent without explicit centering, so their bounding box collapsed to 0. Added `left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2` to center them properly.
+   680→- Verification:
+   681→  - `bun run lint` — clean (0 errors, 0 warnings).
+   682→  - Agent Browser end-to-end via the Caddy gateway (port 81, the path the user takes through the Preview Panel):
+   683→    1. Logged in as admin@atomcode.dev → dashboard → clicked "Present" on "Test Activity".
+   684→    2. Lobby screen rendered: access code "674885" at top-left (top=13px), joined count badge at top-right, Start button at bottom-right (top=521px, right=1264px on a 1280px-wide viewport).
+   685→    3. Seeded 8 participants (Alice–Hana) via REST before opening the page → all 8 appeared as bubbles on the first ring (radius ~94-146px around the viewport center), each with the correct first-letter initial (A, B, C, D, E, F, G, H) and a unique colored border (e.g. rgb(158,242,90) green, rgb(158,90,242) purple, rgb(90,242,176) teal, rgb(90,113,242) blue, rgb(242,90,115) red, etc.).
+   686→    4. Oil centrifugal effect verified: 2 conic-gradient layers, outer 870x870px and inner 618x618px, both centered at (640, 322), with blur(70px) and blur(45px) + mix-blend-mode: screen. They rotate in opposite directions (verified by `transform: matrix(...)` showing rotation values).
+   687→    5. Live join test: simulated a real participant (Ivan) joining via REST + socket.io `join_activity` event → a 9th bubble "I" appeared in real-time with a spring scale-in animation. The joined count updated from 8 → 10.
+   688→    6. Reload test: after reload, all 10 participants appeared immediately (via the REST `/participants` fetch on mount), confirming the late-host scenario works.
+   689→    7. Multi-ring test: seeded 6 more participants (Jasmine–Omar, 16 total) → all 16 bubbles rendered across 2 rings (inner ring ~120-190px radius for the first 8, outer ring ~210-250px for the next 8). Distances confirmed the two-ring layout.
+   690→    8. Mobile responsive (375x667): code at top=93px (below header), Start button at bottom-right (top=611, right=359 = 16px from edge), all 16 bubbles rendered with the orbital container scaled to 0.78.
+   691→    9. Console + dev.log: no runtime errors, no hydration errors. Only harmless `[socket] disconnected: ping timeout` warnings from the disconnected test socket client.
+   692→- Cleaned up all 16 seeded participants after verification; dashboard is back to a clean state.
+   693→
+   694→Stage Summary:
+   695→- The lobby (activity code show) page is now a full-screen interactive stage:
+   696→  - Top: access code (mono, large, with copy button) + live "X joined" count badge with pulsing dot — both in glass cards.
+   697→  - Center: a moving "oil centrifugal" swirl (two counter-rotating blurred conic-gradients with screen blend mode + a dark center eye), surrounded by orbiting glassmorphism bubbles — one per joined participant, each with a unique color from a 70-color palette (deterministically assigned by name hash), a colored glow, the first letter of the participant's name in the middle, and a spring scale-in entrance animation when they join.
+   698→  - Bottom-right: large "Start activity" button with primary shadow.
+   699→- New API: `GET /api/activities/[id]/participants` returns the list of joined participants (id, displayName, uoid, joinedAt).
+   700→- Bubbles are populated both on mount (REST fetch of existing participants) and in real-time (socket `participant_joined` event).
+   701→- Multi-ring layout supports up to 60 visible bubbles (4 rings × caps of 8/12/16/24) while staying readable; the orbital container scales down on mobile.
+   702→

@@ -1,0 +1,203 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  /* All radius scales pinned to 0 so every rounded-* utility resolves to sharp edges */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+}
+
+/* Light theme — warm off-white background with vibrant fuchsia primary */
+:root {
+  --radius: 0;
+  --background: oklch(0.99 0.005 320);
+  --foreground: oklch(0.18 0.02 320);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 320);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 320);
+  /* Vibrant fuchsia/magenta — distinct from indigo (hue ~265) and blue (hue ~240) */
+  --primary: oklch(0.55 0.235 340);
+  --primary-foreground: oklch(0.99 0.005 320);
+  --secondary: oklch(0.96 0.015 340);
+  --secondary-foreground: oklch(0.3 0.08 340);
+  --muted: oklch(0.965 0.01 340);
+  --muted-foreground: oklch(0.5 0.03 340);
+  --accent: oklch(0.95 0.03 70);
+  --accent-foreground: oklch(0.35 0.1 60);
+  --destructive: oklch(0.58 0.24 25);
+  --border: oklch(0.9 0.015 340);
+  --input: oklch(0.92 0.01 340);
+  --ring: oklch(0.55 0.235 340);
+  /* Chart colors — warm + magenta spectrum, avoiding blue/indigo */
+  --chart-1: oklch(0.55 0.235 340);   /* fuchsia */
+  --chart-2: oklch(0.65 0.2 145);      /* emerald */
+  --chart-3: oklch(0.75 0.19 70);      /* amber */
+  --chart-4: oklch(0.6 0.22 12);       /* coral/red */
+  --chart-5: oklch(0.5 0.2 300);       /* purple (not indigo) */
+  --sidebar: oklch(0.985 0.005 320);
+  --sidebar-foreground: oklch(0.18 0.02 320);
+  --sidebar-primary: oklch(0.55 0.235 340);
+  --sidebar-primary-foreground: oklch(0.99 0.005 320);
+  --sidebar-accent: oklch(0.96 0.015 340);
+  --sidebar-accent-foreground: oklch(0.3 0.08 340);
+  --sidebar-border: oklch(0.9 0.015 340);
+  --sidebar-ring: oklch(0.55 0.235 340);
+}
+
+/* Dark theme — deep plum background */
+.dark {
+  --background: oklch(0.16 0.02 320);
+  --foreground: oklch(0.97 0.01 320);
+  --card: oklch(0.21 0.025 320);
+  --card-foreground: oklch(0.97 0.01 320);
+  --popover: oklch(0.21 0.025 320);
+  --popover-foreground: oklch(0.97 0.01 320);
+  --primary: oklch(0.7 0.22 340);
+  --primary-foreground: oklch(0.18 0.02 320);
+  --secondary: oklch(0.27 0.03 320);
+  --secondary-foreground: oklch(0.97 0.01 320);
+  --muted: oklch(0.26 0.025 320);
+  --muted-foreground: oklch(0.7 0.03 320);
+  --accent: oklch(0.32 0.05 60);
+  --accent-foreground: oklch(0.95 0.03 70);
+  --destructive: oklch(0.7 0.2 25);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.7 0.22 340);
+  --chart-1: oklch(0.7 0.22 340);
+  --chart-2: oklch(0.7 0.18 150);
+  --chart-3: oklch(0.78 0.18 70);
+  --chart-4: oklch(0.68 0.22 15);
+  --chart-5: oklch(0.62 0.2 300);
+  --sidebar: oklch(0.21 0.025 320);
+  --sidebar-foreground: oklch(0.97 0.01 320);
+  --sidebar-primary: oklch(0.7 0.22 340);
+  --sidebar-primary-foreground: oklch(0.18 0.02 320);
+  --sidebar-accent: oklch(0.27 0.03 320);
+  --sidebar-accent-foreground: oklch(0.97 0.01 320);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.7 0.22 340);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* All edges sharp — no rounded corners anywhere, on any element.
+   Declared OUTSIDE any cascade layer so it beats Tailwind utilities
+   (including rounded-full, rounded-2xl, etc.) with !important. */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+  border-start-start-radius: 0 !important;
+  border-start-end-radius: 0 !important;
+  border-end-start-radius: 0 !important;
+  border-end-end-radius: 0 !important;
+}
+
+/* Presentation-grade background gradients */
+@layer utilities {
+  .bg-stage {
+    background-image:
+      radial-gradient(60% 50% at 15% 10%, oklch(0.55 0.235 340 / 0.18) 0%, transparent 60%),
+      radial-gradient(55% 45% at 90% 20%, oklch(0.75 0.19 70 / 0.16) 0%, transparent 55%),
+      radial-gradient(70% 60% at 80% 100%, oklch(0.65 0.2 145 / 0.14) 0%, transparent 60%);
+  }
+  .bg-stage-dark {
+    background-image:
+      radial-gradient(60% 50% at 15% 10%, oklch(0.7 0.22 340 / 0.22) 0%, transparent 60%),
+      radial-gradient(55% 45% at 90% 20%, oklch(0.78 0.18 70 / 0.16) 0%, transparent 55%),
+      radial-gradient(70% 60% at 80% 100%, oklch(0.7 0.18 150 / 0.16) 0%, transparent 60%);
+  }
+  .gradient-text {
+    background: linear-gradient(120deg, var(--primary), oklch(0.7 0.2 60));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .glass {
+    background: color-mix(in oklab, var(--card) 70%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  /* custom scrollbar */
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--primary) 35%, transparent);
+    border-radius: 999px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--primary) 55%, transparent);
+  }
+
+  /* Participant bubbles on the live lobby stage — the only place we render
+     true circles. Lives inside the utilities layer so it overrides the
+     base-layer `* { border-radius: 0 !important }` reset (utilities layer
+     wins over base layer in the cascade layer order). */
+  .bubble-circle,
+  .bubble-circle::before,
+  .bubble-circle::after {
+    border-radius: 50% !important;
+    border-start-start-radius: 50% !important;
+    border-start-end-radius: 50% !important;
+    border-end-start-radius: 50% !important;
+    border-end-end-radius: 50% !important;
+  }
+}
+
+/* (Legacy override block removed — the rule now lives inside @layer utilities
+   above so Tailwind v4 reliably emits it.) */

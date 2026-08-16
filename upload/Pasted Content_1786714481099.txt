@@ -1,0 +1,1857 @@
+Absolutely. For your requirement, I would keep the **MVP much smaller than Mentimeter**, but follow its core interaction pattern:
+
+**Admin creates activity → adds MCQs → publishes/generates access code → participants join code → admin starts questions → participants answer in real time → live results appear → next question.**
+
+Below is a product requirements document you can directly use as the foundation for UI/UX, development, and system architecture.
+
+# Product Requirements Document — Real-Time Quiz Activity Platform
+
+**Product type:** Real-time interactive quiz/presentation platform
+**Reference experience:** Mentimeter-style slide interaction
+**MVP focus:** MCQ activities only
+**Authentication:** Admin only
+**Participant authentication:** None
+**Primary interaction:** Access-code based joining
+**Architecture:** Web application, real-time communication
+
+---
+
+## 1. Product Vision
+
+Build a lightweight real-time quiz platform that allows an administrator to create interactive MCQ activities and conduct them live with participants.
+
+The platform should feel like a **presentation tool rather than a traditional quiz application**.
+
+The administrator controls the presentation from one screen while participants use their phones/laptops to join with a short access code and answer questions.
+
+### Core experience
+
+```text
+ADMIN
+  │
+  ├── Login
+  │
+  ├── Create Activity
+  │      ├── Activity title
+  │      ├── Add MCQ
+  │      ├── Add multiple questions
+  │      └── Publish
+  │
+  ├── Generate Access Code
+  │
+  ▼
+LIVE ACTIVITY
+  │
+  ├── Participants join using code
+  │
+  ├── Admin starts activity
+  │
+  ├── Question 1
+  │      └── Participants answer
+  │
+  ├── Live results
+  │
+  ├── Next question
+  │
+  └── Final results
+```
+
+---
+
+# 2. MVP Goals
+
+The first version should solve **one problem extremely well**:
+
+> "I want to conduct a live MCQ quiz for a group of people without requiring participants to create accounts."
+
+### MVP must support
+
+* Admin authentication
+* Multiple admins
+* Admin dashboard
+* Activity creation
+* Activity editing
+* Multiple MCQs per activity
+* Four answer options
+* Correct answer
+* Question timer
+* Activity access code
+* Participant joining
+* Anonymous participants
+* Live participant count
+* Real-time question delivery
+* Real-time answer submission
+* Live answer statistics
+* Next/previous question control
+* Final results
+* Activity history
+
+### Explicitly NOT required in MVP
+
+Avoid feature creep.
+
+Do **not** initially build:
+
+* User accounts
+* Participant profiles
+* Teams
+* Payments
+* Leaderboards with complex gamification
+* Word clouds
+* Open-ended questions
+* Poll questions
+* Rating questions
+* Surveys
+* File uploads
+* AI question generation
+* Certificates
+* LMS integration
+* Social login
+* Mobile apps
+* Advanced analytics
+
+These can become future modules.
+
+---
+
+# 3. User Roles
+
+There are only two conceptual roles.
+
+## Admin
+
+Authenticated user who creates and manages activities.
+
+Admin can:
+
+* Login
+* View dashboard
+* Create activities
+* Edit activities
+* Delete activities
+* Publish activities
+* Generate access codes
+* Start live activities
+* Control questions
+* View live results
+* End activities
+* View previous activities
+* Manage other admins
+
+## Participant
+
+No account.
+
+Participant:
+
+1. Opens the participant website.
+2. Enters access code.
+3. Enters display name.
+4. Joins activity.
+5. Waits for admin.
+6. Receives question.
+7. Selects answer.
+8. Sees result/status.
+9. Continues to next question.
+
+---
+
+# 4. Application Structure
+
+I recommend two clearly separated experiences.
+
+```text
+                    PLATFORM
+                       │
+             ┌─────────┴─────────┐
+             │                   │
+          ADMIN                PLAYER
+             │                   │
+      /admin/*             /join
+             │                   │
+        Login              Access Code
+             │                   │
+        Dashboard          Display Name
+             │                   │
+       Activities              Lobby
+             │                   │
+       Activity Editor       Live Question
+             │                   │
+       Live Presentation     Answer
+             │                   │
+       Results               Waiting
+```
+
+### Suggested routes
+
+```text
+/login
+
+/admin
+/admin/dashboard
+/admin/activities
+/admin/activities/new
+/admin/activities/[id]
+/admin/activities/[id]/edit
+/admin/activities/[id]/present
+/admin/admins
+/admin/settings
+
+/join
+/join/[code]
+```
+
+---
+
+# 5. Mentimeter-Inspired Design Philosophy
+
+The most important design decision is:
+
+> **The activity should look like a sequence of presentation slides, not a database form.**
+
+The admin shouldn't feel like they are filling out an enterprise CMS.
+
+### Visual hierarchy
+
+Use:
+
+* Large typography
+* Large cards
+* Large answer buttons
+* Minimal navigation
+* Strong whitespace
+* Rounded components
+* Subtle gradients
+* Smooth transitions
+* Full-screen presentation mode
+* Progress indicators
+* Large question numbers
+
+Think:
+
+```text
+┌─────────────────────────────────────────────┐
+│                                             │
+│              QUESTION 03                    │
+│                                             │
+│        Which language runs on JVM?          │
+│                                             │
+│   ┌───────────────┐  ┌───────────────┐      │
+│   │               │  │               │      │
+│   │     Java      │  │     Python    │      │
+│   │               │  │               │      │
+│   └───────────────┘  └───────────────┘      │
+│                                             │
+│   ┌───────────────┐  ┌───────────────┐      │
+│   │               │  │               │      │
+│   │      C++      │  │      Go       │      │
+│   │               │  │               │      │
+│   └───────────────┘  └───────────────┘      │
+│                                             │
+│                 00:24                       │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+# 6. Admin Login
+
+Minimal authentication.
+
+### Login screen
+
+```text
+        ┌───────────────────────────┐
+        │                           │
+        │       QUIZ PLATFORM       │
+        │                           │
+        │   Admin Sign In           │
+        │                           │
+        │   Email                   │
+        │   ┌─────────────────────┐ │
+        │   │                     │ │
+        │   └─────────────────────┘ │
+        │                           │
+        │   Password                │
+        │   ┌─────────────────────┐ │
+        │   │                     │ │
+        │   └─────────────────────┘ │
+        │                           │
+        │       [ Sign In ]         │
+        │                           │
+        └───────────────────────────┘
+```
+
+No participant authentication.
+
+---
+
+# 7. Admin Dashboard
+
+The dashboard should immediately communicate:
+
+* Number of activities
+* Active activity
+* Recent activities
+* Create activity
+
+### Dashboard
+
+```text
+┌──────────────────────────────────────────────────┐
+│ QUIZ PLATFORM                     Admin ▼        │
+├──────────────────────────────────────────────────┤
+│                                                  │
+│  Good evening                                    │
+│  Ready to run your next activity?               │
+│                                                  │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐   │
+│  │ Activities │ │ Live       │ │ Participants│  │
+│  │    24      │ │     1      │ │     82     │  │
+│  └────────────┘ └────────────┘ └────────────┘   │
+│                                                  │
+│  [+ Create Activity]                             │
+│                                                  │
+│  Recent Activities                               │
+│  ┌────────────────────────────────────────────┐  │
+│  │ Java Fundamentals       10 questions       │  │
+│  │ AWS Data Engineering   15 questions       │  │
+│  │ Spring Boot Quiz        20 questions       │  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
+└──────────────────────────────────────────────────┘
+```
+
+---
+
+# 8. Activity
+
+An activity represents one complete quiz/presentation.
+
+### Activity fields
+
+```text
+Activity
+├── id
+├── title
+├── description
+├── status
+├── created_by
+├── created_at
+├── updated_at
+└── questions
+```
+
+### Status
+
+```text
+DRAFT
+PUBLISHED
+LIVE
+COMPLETED
+ARCHIVED
+```
+
+---
+
+# 9. Activity Creation
+
+Admin clicks:
+
+**+ Create Activity**
+
+### Step 1 — Basic Information
+
+```text
+Create Activity
+
+Title
+[ Java Fundamentals Quiz                  ]
+
+Description
+[ Test your understanding of Java basics ]
+
+                 [Continue]
+```
+
+---
+
+# 10. Question Builder
+
+This is one of the most important screens.
+
+Use a **slide editor** approach.
+
+```text
+┌────────────┬──────────────────────────────────────┐
+│            │                                      │
+│ Question 1 │       Question Editor                │
+│            │                                      │
+│ Question 2 │  What is JVM?                       │
+│            │                                      │
+│ Question 3 │  ┌────────────────────────────────┐  │
+│            │  │ Question                       │  │
+│            │  └────────────────────────────────┘  │
+│            │                                      │
+│            │  Answers                             │
+│            │                                      │
+│            │  A ┌─────────────────────────────┐  │
+│            │    │ Java Virtual Machine        │  │
+│            │    └─────────────────────────────┘  │
+│            │                                      │
+│            │  B ┌─────────────────────────────┐  │
+│            │    │ Java Visual Machine         │  │
+│            │    └─────────────────────────────┘  │
+│            │                                      │
+│            │  C ┌─────────────────────────────┐  │
+│            │    │ Java Version Manager        │  │
+│            │    └─────────────────────────────┘  │
+│            │                                      │
+│            │  D ┌─────────────────────────────┐  │
+│            │    │ Java Virtual Memory         │  │
+│            │    └─────────────────────────────┘  │
+│            │                                      │
+│            │  Correct Answer: A                  │
+│            │  Time: 30 seconds                   │
+│            │                                      │
+│            │        [Save Question]              │
+└────────────┴──────────────────────────────────────┘
+```
+
+---
+
+# 11. MCQ Requirements
+
+Each question contains:
+
+```text
+Question
+├── question_text
+├── option_a
+├── option_b
+├── option_c
+├── option_d
+├── correct_option
+└── time_limit
+```
+
+### Required validation
+
+* Question cannot be empty.
+* All four options required.
+* Exactly one correct answer.
+* Time must be configurable.
+* Question order must be maintained.
+
+Recommended timer options:
+
+```text
+15 sec
+30 sec
+45 sec
+60 sec
+90 sec
+120 sec
+```
+
+Default:
+
+**30 seconds**
+
+---
+
+# 12. Activity Publishing
+
+Once questions are complete:
+
+```text
+Activity: Java Fundamentals
+
+10 Questions
+Status: Draft
+
+[ Edit ]
+
+[ Publish Activity ]
+```
+
+After publishing:
+
+```text
+Activity Published
+
+        JOIN CODE
+
+          482731
+
+Participants can join at:
+
+        yourapp.com/join
+
+             [Start Activity]
+```
+
+The access code should be short and easy to communicate.
+
+Recommended:
+
+**6-digit numeric code**
+
+Example:
+
+```text
+482731
+```
+
+---
+
+# 13. Participant Join Flow
+
+This must be extremely simple.
+
+### Landing screen
+
+```text
+        ┌──────────────────────────┐
+        │                          │
+        │       JOIN QUIZ          │
+        │                          │
+        │   Enter access code      │
+        │                          │
+        │    ┌──────────────┐      │
+        │    │    482731    │      │
+        │    └──────────────┘      │
+        │                          │
+        │       [ Continue ]       │
+        │                          │
+        └──────────────────────────┘
+```
+
+Then:
+
+```text
+What's your name?
+
+┌────────────────────────────┐
+│ Mohan                      │
+└────────────────────────────┘
+
+        [Join]
+```
+
+No email.
+
+No password.
+
+No account.
+
+---
+
+# 14. Participant Lobby
+
+After joining:
+
+```text
+┌─────────────────────────────────────┐
+│                                     │
+│            JAVA QUIZ                │
+│                                     │
+│          You're in!                 │
+│                                     │
+│       Waiting for host...           │
+│                                     │
+│             ●                       │
+│                                     │
+│       42 participants joined        │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+The participant waits until the admin starts the activity.
+
+---
+
+# 15. Live Presentation Mode
+
+This is the **heart of the product**.
+
+Admin should have a presentation interface.
+
+```text
+┌────────────────────────────────────────────────────┐
+│ JAVA FUNDAMENTALS             Q3 / 10      00:27    │
+├────────────────────────────────────────────────────┤
+│                                                    │
+│                                                    │
+│               What is JVM?                         │
+│                                                    │
+│                                                    │
+│       ┌────────────────┐ ┌────────────────┐        │
+│       │                │ │                │        │
+│       │ Java Virtual   │ │ Java Visual    │        │
+│       │ Machine        │ │ Machine        │        │
+│       │                │ │                │        │
+│       └────────────────┘ └────────────────┘        │
+│                                                    │
+│       ┌────────────────┐ ┌────────────────┐        │
+│       │                │ │                │        │
+│       │ Java Version   │ │ Java Virtual   │        │
+│       │ Manager        │ │ Memory        │        │
+│       │                │ │                │        │
+│       └────────────────┘ └────────────────┘        │
+│                                                    │
+│                                                    │
+│  38 answered                    [Next →]           │
+└────────────────────────────────────────────────────┘
+```
+
+---
+
+# 16. Real-Time Architecture
+
+This is critical.
+
+Normal HTTP requests alone are not ideal for the live quiz experience.
+
+Use:
+
+```text
+HTTP
++
+WebSocket / Realtime
+```
+
+### Basic architecture
+
+```text
+                   ┌───────────────────┐
+                   │     Browser       │
+                   │      Admin        │
+                   └─────────┬─────────┘
+                             │
+                         HTTPS/WSS
+                             │
+                             ▼
+                   ┌───────────────────┐
+                   │   Application     │
+                   │     Server        │
+                   └─────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+          Database       Realtime       Cache/State
+              │              │
+              │              │
+              ▼              ▼
+          PostgreSQL      WebSocket
+                             │
+                 ┌───────────┴───────────┐
+                 │                       │
+                 ▼                       ▼
+             Participant             Participant
+```
+
+---
+
+# 17. Real-Time Events
+
+Keep the event system simple.
+
+### Admin → Server
+
+```text
+ACTIVITY_START
+QUESTION_START
+QUESTION_END
+ACTIVITY_END
+```
+
+### Participant → Server
+
+```text
+JOIN_ACTIVITY
+SUBMIT_ANSWER
+```
+
+### Server → Participants
+
+```text
+ACTIVITY_STARTED
+QUESTION_STARTED
+QUESTION_ENDED
+RESULTS_UPDATED
+ACTIVITY_COMPLETED
+```
+
+---
+
+# 18. Real-Time Question Flow
+
+Example:
+
+```text
+Admin clicks "Start Question"
+
+        ↓
+
+Server changes current_question
+
+        ↓
+
+Realtime event
+
+QUESTION_STARTED
+
+        ↓
+
+All connected participants receive event
+
+        ↓
+
+Question appears on their screens
+
+        ↓
+
+Participants select answers
+
+        ↓
+
+SUBMIT_ANSWER
+
+        ↓
+
+Server validates answer
+
+        ↓
+
+Store answer
+
+        ↓
+
+Update statistics
+
+        ↓
+
+Broadcast result count
+```
+
+---
+
+# 19. Important Rule: Server Is the Source of Truth
+
+Never trust the browser for:
+
+* Correct answer
+* Timer
+* Current question
+* Activity state
+* Participant count
+* Final score
+
+The server should determine these.
+
+For example:
+
+```text
+Browser says:
+
+"I selected A"
+
+Server checks:
+
+Is activity live?
+Is question currently active?
+Has this participant already answered?
+Is the answer valid?
+
+Then:
+
+Save answer
+```
+
+---
+
+# 20. Database Design
+
+A simple PostgreSQL schema is enough.
+
+### Admin
+
+```text
+admins
+----------------
+id
+name
+email
+password_hash
+role
+created_at
+updated_at
+```
+
+You can initially have:
+
+```text
+role = ADMIN
+```
+
+but retaining a role field makes future authorization easier.
+
+---
+
+### Activities
+
+```text
+activities
+----------------
+id
+title
+description
+status
+access_code
+created_by
+created_at
+updated_at
+started_at
+ended_at
+```
+
+Relationship:
+
+```text
+Admin
+  │
+  └── Activities
+```
+
+---
+
+### Questions
+
+```text
+questions
+----------------
+id
+activity_id
+question_order
+question_text
+option_a
+option_b
+option_c
+option_d
+correct_option
+time_limit
+created_at
+updated_at
+```
+
+Relationship:
+
+```text
+Activity
+   │
+   ├── Question 1
+   ├── Question 2
+   ├── Question 3
+   └── Question N
+```
+
+---
+
+### Participants
+
+Because participants don't have accounts:
+
+```text
+participants
+----------------
+id
+activity_id
+session_id
+display_name
+joined_at
+last_seen_at
+```
+
+`session_id` identifies the participant during the activity.
+
+---
+
+### Answers
+
+```text
+answers
+----------------
+id
+activity_id
+question_id
+participant_id
+selected_option
+is_correct
+answered_at
+```
+
+---
+
+# 21. Activity State Machine
+
+Use an explicit state machine.
+
+```text
+                 ┌─────────┐
+                 │  DRAFT  │
+                 └────┬────┘
+                      │
+                   Publish
+                      │
+                      ▼
+               ┌─────────────┐
+               │  PUBLISHED  │
+               └──────┬──────┘
+                      │
+                    Start
+                      │
+                      ▼
+                 ┌─────────┐
+                 │  LIVE   │
+                 └────┬────┘
+                      │
+                     End
+                      │
+                      ▼
+                ┌───────────┐
+                │ COMPLETED │
+                └───────────┘
+```
+
+This prevents invalid operations.
+
+For example:
+
+```text
+DRAFT → Start
+```
+
+should not be allowed.
+
+It must first be:
+
+```text
+DRAFT → PUBLISHED → LIVE
+```
+
+---
+
+# 22. Live Results
+
+For every question, show answer distribution.
+
+Example:
+
+```text
+What is JVM?
+
+A  Java Virtual Machine       ███████████████  32
+B  Java Visual Machine        ██                 4
+C  Java Version Manager       █                    1
+D  Java Virtual Memory        ███                  6
+
+                         43 responses
+```
+
+The admin should be able to see results **while participants are answering**.
+
+---
+
+# 23. Participant Experience During Answer
+
+Participant sees:
+
+```text
+┌──────────────────────────────────────┐
+│                                      │
+│  What is JVM?                        │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ Java Virtual Machine            │  │
+│  └────────────────────────────────┘  │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ Java Visual Machine             │ │
+│  └────────────────────────────────┘  │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ Java Version Manager            │ │
+│  └────────────────────────────────┘  │
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │ Java Virtual Memory             │ │
+│  └────────────────────────────────┘  │
+│                                      │
+│               00:21                  │
+└──────────────────────────────────────┘
+```
+
+After selecting:
+
+```text
+        ✓ Answer submitted
+
+        Waiting for the host...
+```
+
+Don't immediately reveal whether the answer is correct if your goal is a presentation-style live experience. Let the admin control when results are revealed.
+
+---
+
+# 24. Results Slide
+
+After the question closes:
+
+```text
+┌──────────────────────────────────────────────┐
+│                                              │
+│               RESULTS                        │
+│                                              │
+│       What is JVM?                           │
+│                                              │
+│   A  ███████████████████████  74%            │
+│   B  ███                     8%              │
+│   C  █                       3%              │
+│   D  █████                   15%             │
+│                                              │
+│               54 responses                   │
+│                                              │
+│                 [Next →]                     │
+│                                              │
+└──────────────────────────────────────────────┘
+```
+
+This should feel like moving to another presentation slide.
+
+---
+
+# 25. Final Results
+
+At the end:
+
+```text
+              QUIZ COMPLETE
+
+        Java Fundamentals
+
+             10 Questions
+
+        82 Participants
+
+        ─────────────────
+
+        Participation: 96%
+
+        Average Score: 7.8 / 10
+
+        Highest Score: 10 / 10
+
+                 [Exit]
+```
+
+For MVP, don't overcomplicate individual ranking.
+
+---
+
+# 26. Admin Management
+
+Since you specifically want multiple admins:
+
+```text
+Admin Dashboard
+      │
+      └── Admin Management
+
+          ┌─────────────────────────────────┐
+          │ Name        Email       Action  │
+          ├─────────────────────────────────┤
+          │ Admin 1     a@x.com     Edit    │
+          │ Admin 2     b@x.com     Edit    │
+          │ Admin 3     c@x.com     Edit    │
+          └─────────────────────────────────┘
+
+                 [+ Add Admin]
+```
+
+### Add admin
+
+```text
+Name
+Email
+Password
+
+[Create Admin]
+```
+
+For the MVP, you can keep all admins at the same privilege level.
+
+Later you could introduce:
+
+```text
+SUPER_ADMIN
+ADMIN
+```
+
+where only `SUPER_ADMIN` can manage admins.
+
+---
+
+# 27. Access Code Rules
+
+Access codes should be:
+
+* 6 digits
+* Easy to type
+* Unique among active activities
+* Expire after activity completion
+* Case-insensitive if you eventually move to alphanumeric codes
+
+Example:
+
+```text
+482731
+```
+
+When activity ends:
+
+```text
+482731 → INVALID
+```
+
+A new activity can receive a new code.
+
+---
+
+# 28. Anti-Duplicate Answer Handling
+
+Important for real-time activities.
+
+A participant should only be able to answer once per question.
+
+Database constraint:
+
+```text
+UNIQUE(
+    participant_id,
+    question_id
+)
+```
+
+If they click twice:
+
+```text
+First request → accepted
+Second request → rejected/ignored
+```
+
+This should also protect against network retries.
+
+---
+
+# 29. Timer Architecture
+
+Do **not** rely on JavaScript's local countdown as the actual timer.
+
+Server stores:
+
+```text
+question_started_at
+question_ends_at
+```
+
+Example:
+
+```text
+question_started_at = 19:30:00
+question_ends_at    = 19:30:30
+```
+
+The client calculates the visual countdown from server timestamps.
+
+Therefore:
+
+```text
+Admin computer clock
+        ≠
+Participant computer clock
+```
+
+doesn't matter.
+
+The server determines the actual deadline.
+
+---
+
+# 30. Essential Admin Controls
+
+During live presentation:
+
+```text
+┌──────────────────────────────────────────────┐
+│                                              │
+│ Question 3 / 10                             │
+│                                              │
+│              QUESTION                        │
+│                                              │
+│                                              │
+│                                              │
+│ Responses: 42                                │
+│                                              │
+│ [Pause] [End Question] [Next →]             │
+│                                              │
+└──────────────────────────────────────────────┘
+```
+
+MVP controls:
+
+* Start
+* Next
+* End question
+* End activity
+
+Avoid too many controls.
+
+---
+
+# 31. Activity List
+
+Admin should have:
+
+```text
+Activities
+
+[+ Create Activity]
+
+┌─────────────────────────────────────────────────┐
+│ Java Fundamentals                               │
+│ 10 questions • Completed                       │
+│                                                 │
+│ [Edit] [Present] [Results]                      │
+├─────────────────────────────────────────────────┤
+│ AWS Data Engineering                            │
+│ 15 questions • Draft                            │
+│                                                 │
+│ [Edit] [Publish]                                │
+└─────────────────────────────────────────────────┘
+```
+
+Filters:
+
+```text
+All
+Draft
+Published
+Completed
+```
+
+Search by title.
+
+That's enough for MVP.
+
+---
+
+# 32. System Architecture
+
+For your existing technology preferences, I would recommend:
+
+```text
+                    ┌─────────────────────┐
+                    │      Next.js        │
+                    │    Web Frontend     │
+                    └──────────┬──────────┘
+                               │
+                       REST / Server Actions
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │    Backend/API      │
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+              ▼                ▼                ▼
+         PostgreSQL         Realtime           Auth
+              │                │                │
+              │           WebSocket             │
+              │                │                │
+              └────────────────┼────────────────┘
+                               │
+                               ▼
+                       Participant Clients
+```
+
+A practical implementation could use:
+
+```text
+Frontend
+Next.js + TypeScript
+Tailwind CSS
+shadcn/ui
+Framer Motion
+
+Backend
+Next.js API / server actions
+
+Database
+PostgreSQL
+
+Authentication
+Supabase Auth
+
+Realtime
+Supabase Realtime / WebSockets
+
+ORM
+Prisma or Supabase client
+```
+
+If using Supabase, you can simplify the architecture considerably:
+
+```text
+Next.js
+   │
+   ├── Supabase Auth
+   ├── Supabase PostgreSQL
+   └── Supabase Realtime
+```
+
+That is particularly attractive for this MVP.
+
+---
+
+# 33. Security
+
+Even though participants are anonymous, security is still important.
+
+### Admin
+
+* Password hashing
+* Secure sessions
+* Protected `/admin/*`
+* Server-side authorization
+* Rate limiting
+* CSRF protection where applicable
+
+### Participant
+
+Use:
+
+```text
+activity_code
++
+participant_session_id
+```
+
+Do not expose:
+
+* Correct answers
+* Admin APIs
+* Other participant information
+* Internal database IDs unnecessarily
+
+Most importantly:
+
+**Never send `correct_option` to the participant browser before the question is completed.**
+
+---
+
+# 34. API Design
+
+Minimal API surface:
+
+### Authentication
+
+```text
+POST /api/auth/login
+POST /api/auth/logout
+```
+
+### Activities
+
+```text
+GET    /api/activities
+POST   /api/activities
+GET    /api/activities/:id
+PATCH  /api/activities/:id
+DELETE /api/activities/:id
+POST   /api/activities/:id/publish
+```
+
+### Questions
+
+```text
+POST   /api/activities/:id/questions
+PATCH  /api/questions/:id
+DELETE /api/questions/:id
+```
+
+### Participant
+
+```text
+POST /api/join
+POST /api/activities/:code/join
+```
+
+### Live activity
+
+```text
+POST /api/activities/:id/start
+POST /api/activities/:id/questions/:questionId/start
+POST /api/activities/:id/questions/:questionId/end
+POST /api/activities/:id/end
+```
+
+### Answers
+
+```text
+POST /api/questions/:id/answer
+```
+
+### Results
+
+```text
+GET /api/activities/:id/results
+GET /api/questions/:id/results
+```
+
+---
+
+# 35. Realtime Channel Model
+
+A useful pattern is one realtime channel per live activity.
+
+Example:
+
+```text
+activity:{activityId}
+```
+
+Events:
+
+```text
+participant_joined
+
+activity_started
+
+question_started
+
+answer_submitted
+
+results_updated
+
+question_ended
+
+activity_completed
+```
+
+Example:
+
+```text
+activity:abc123
+
+        │
+        ├── Admin
+        │
+        ├── Participant A
+        ├── Participant B
+        ├── Participant C
+        └── Participant N
+```
+
+---
+
+# 36. UX State Model
+
+### Participant
+
+```text
+JOIN
+ ↓
+LOBBY
+ ↓
+QUESTION
+ ↓
+ANSWERED
+ ↓
+WAITING
+ ↓
+QUESTION
+ ↓
+...
+ ↓
+COMPLETED
+```
+
+### Admin
+
+```text
+LOGIN
+ ↓
+DASHBOARD
+ ↓
+ACTIVITY
+ ↓
+PRESENTATION
+ ↓
+QUESTION
+ ↓
+RESULTS
+ ↓
+NEXT QUESTION
+ ↓
+...
+ ↓
+FINAL RESULTS
+```
+
+---
+
+# 37. Core UI Components
+
+Build reusable components around the presentation model.
+
+```text
+components/
+│
+├── auth/
+│   └── AdminLogin
+│
+├── dashboard/
+│   ├── ActivityCard
+│   ├── ActivityList
+│   └── StatsCard
+│
+├── activity/
+│   ├── ActivityEditor
+│   ├── QuestionEditor
+│   ├── QuestionList
+│   └── QuestionCard
+│
+├── presentation/
+│   ├── PresentationShell
+│   ├── QuestionSlide
+│   ├── ResultSlide
+│   ├── Timer
+│   ├── ProgressBar
+│   └── PresentationControls
+│
+├── participant/
+│   ├── JoinForm
+│   ├── ParticipantLobby
+│   ├── ParticipantQuestion
+│   ├── AnswerButton
+│   └── ParticipantWaiting
+│
+└── results/
+    ├── ResultChart
+    ├── ScoreSummary
+    └── FinalResults
+```
+
+---
+
+# 38. Design System
+
+Use a consistent design system rather than trying to clone Mentimeter exactly.
+
+### Typography
+
+```text
+Page title       40–56px
+Question         40–64px
+Answer           20–28px
+Body             16px
+Caption          13–14px
+```
+
+### Cards
+
+```text
+border-radius: 16–24px
+```
+
+### Buttons
+
+Large touch targets:
+
+```text
+min-height: 48px
+```
+
+Participant answer buttons should ideally be:
+
+```text
+100–140px high
+```
+
+depending on screen size.
+
+---
+
+# 39. Responsive Strategy
+
+Participant interface should be **mobile-first**.
+
+Admin dashboard:
+
+```text
+Desktop-first
+```
+
+Participant:
+
+```text
+Mobile-first
+```
+
+Because the likely usage is:
+
+```text
+Admin → projector/laptop
+Participants → phones
+```
+
+This is a very important product distinction.
+
+---
+
+# 40. MVP Success Criteria
+
+The MVP is successful if an admin can do this without assistance:
+
+```text
+1. Login
+2. Create activity
+3. Add 5 MCQs
+4. Publish
+5. Get access code
+6. Display code to audience
+7. 20+ users join
+8. Start activity
+9. Ask question
+10. Receive answers in real time
+11. Show results
+12. Move to next question
+13. Finish activity
+14. View final results
+```
+
+And the participant can:
+
+```text
+1. Open join page
+2. Enter code
+3. Enter name
+4. Join
+5. See question
+6. Answer
+7. Wait
+8. Continue
+```
+
+with **zero account creation**.
+
+---
+
+# 41. MVP Feature Priority
+
+### P0 — Absolutely required
+
+| Feature            | Priority |
+| ------------------ | -------- |
+| Admin login        | P0       |
+| Multiple admins    | P0       |
+| Dashboard          | P0       |
+| Create activity    | P0       |
+| Edit activity      | P0       |
+| MCQ builder        | P0       |
+| Publish activity   | P0       |
+| Access code        | P0       |
+| Participant join   | P0       |
+| Participant name   | P0       |
+| Lobby              | P0       |
+| Real-time question | P0       |
+| Answer submission  | P0       |
+| Timer              | P0       |
+| Live results       | P0       |
+| Next question      | P0       |
+| Final results      | P0       |
+
+### P1 — After MVP
+
+| Feature             | Priority |
+| ------------------- | -------- |
+| Duplicate activity  | P1       |
+| Question reordering | P1       |
+| Activity analytics  | P1       |
+| Export results      | P1       |
+| Leaderboard         | P1       |
+| Question image      | P1       |
+| Custom theme        | P1       |
+
+### P2 — Future
+
+| Feature                | Priority |
+| ---------------------- | -------- |
+| Polls                  | P2       |
+| Word cloud             | P2       |
+| Open-ended questions   | P2       |
+| AI question generation | P2       |
+| Teams                  | P2       |
+| LMS integration        | P2       |
+| Templates              | P2       |
+| Presentation themes    | P2       |
+| Participant accounts   | P2       |
+
+---
+
+# 42. Recommended MVP Screen Map
+
+You essentially need only these screens:
+
+```text
+ADMIN
+
+01 Login
+02 Dashboard
+03 Activities
+04 Create Activity
+05 Activity Editor
+06 Question Editor
+07 Publish / Access Code
+08 Live Presentation
+09 Live Results
+10 Final Results
+11 Admin Management
+
+
+PARTICIPANT
+
+12 Join
+13 Name
+14 Lobby
+15 Question
+16 Answer Submitted
+17 Results/Waiting
+18 Completed
+```
+
+That's a very manageable product.
+
+---
+
+# 43. Most Important Product Principle
+
+Don't build this as:
+
+> "An online MCQ management system."
+
+Build it as:
+
+> **"A live presentation system where each question is a slide."**
+
+That distinction should drive the entire UI.
+
+The admin should think:
+
+```text
+Slide 1 → Slide 2 → Slide 3 → Results → Slide 4
+```
+
+rather than:
+
+```text
+Question database → Question record → Answer record
+```
+
+Internally it is still a database-driven quiz system, but **the user experience should be presentation-first**.
+
+---
+
+# 44. Final Recommended Architecture
+
+For your MVP, I'd keep the stack very focused:
+
+```text
+┌───────────────────────────────────────────────┐
+│                  NEXT.JS                     │
+│              TypeScript + App Router        │
+│                                               │
+│  Admin UI                 Participant UI     │
+│  ─────────                 ─────────────     │
+│  Dashboard                 Join              │
+│  Activities                Lobby             │
+│  Editor                    Question          │
+│  Presentation              Answer            │
+│  Results                   Waiting           │
+│                                               │
+└───────────────────┬───────────────────────────┘
+                    │
+                    ▼
+             ┌───────────────┐
+             │   SUPABASE    │
+             │               │
+             │ Auth          │
+             │ PostgreSQL    │
+             │ Realtime      │
+             │ RLS           │
+             └───────────────┘
+```
+
+### Core entities
+
+```text
+Admin
+  │
+  └──── Activity
+           │
+           ├──── Question
+           │       │
+           │       └──── Answer
+           │
+           └──── Participant
+```
+
+### Core realtime loop
+
+```text
+                 ADMIN
+                   │
+             Start Question
+                   │
+                   ▼
+              SERVER STATE
+                   │
+                   ▼
+             REALTIME EVENT
+                   │
+       ┌───────────┼───────────┐
+       ▼           ▼           ▼
+   Player A     Player B    Player C
+       │           │           │
+       └────── Answer ──────────┘
+                   │
+                   ▼
+              SERVER
+                   │
+             Store Answer
+                   │
+                   ▼
+             Calculate Stats
+                   │
+                   ▼
+             Live Results
+                   │
+                   ▼
+                 ADMIN
+```
+
+**This is the MVP I would build first.** It gives you the essential Mentimeter-like experience without taking on Mentimeter's much larger feature set. The most valuable differentiator later would be adding other slide types—polls, word clouds, ratings, Q&A, and so on—while keeping the same **activity → access code → live slide → response → results** architecture.
