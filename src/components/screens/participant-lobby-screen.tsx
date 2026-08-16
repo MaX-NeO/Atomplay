@@ -1,0 +1,181 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useAppStore } from '@/lib/store'
+import { api, ApiError } from '@/lib/api-client'
+import { getSocket } from '@/lib/socket'
+import { AppFooter } from '@/components/shared/app-footer'
+import { Card, CardContent } from '@/components/ui/card'
+import { motion } from 'framer-motion'
+import { Radio, Users } from 'lucide-react'
+import type {
+  ActivityStateResponse,
+  ParticipantJoinedPayload,
+  QuestionStartedPayload,
+  ActivityCompletedPayload,
+  ActivityResetPayload,
+} from '@/lib/types'
+
+export function ParticipantLobbyScreen() {
+  const navigate = useAppStore((s) => s.navigate)
+  const participant = useAppStore((s) => s.participant)
+  const setParticipant = useAppStore((s) => s.setParticipant)
+  const [participantCount, setParticipantCount] = useState<number>(0)
+  const [activityStarted, setActivityStarted] = useState(false)
+  const [ready, setReady] = useState(false)
+
+  // Guard: no participant session → back to join.
+  useEffect(() => {
+    if (!participant) {
+      navigate('participant-join')
+    }
+  }, [participant, navigate])
+
+  // REST sync on mount (handles reloads / late-joiners).
+  useEffect(() => {
+    if (!participant) return
+    let cancelled = false
+    api
+      .get<ActivityStateResponse>(`/api/activities/${participant.accessCode}/state`)
+      .then((state) => {
+        if (cancelled) return
+        setParticipantCount(state.participantCount)
+        if (state.status === 'COMPLETED') {
+          navigate('participant-completed')
+          return
+        }
+        if (state.status === 'LIVE' && state.currentQuestion) {
+          navigate('participant-question')
+          return
+        }
+        if (state.status === 'LIVE') {
+          // Live but no question yet — activity is starting.
+          setActivityStarted(true)
+        }
+        setReady(true)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        if (err instanceof ApiError && err.status === 404) {
+          navigate('participant-join')
+          return
+        }
+        setReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [participant, navigate])
+
+  // Socket: join the activity room and listen for state transitions.
+  useEffect(() => {
+    if (!participant) return
+    const socket = getSocket()
+    socket.emit('join_activity', {
+      activityId: participant.activityId,
+      sessionId: participant.sessionId,
+    })
+
+    const onQuestionStarted = (_p: QuestionStartedPayload) => {
+      navigate('participant-question')
+    }
+    const onActivityCompleted = (_p: ActivityCompletedPayload) => {
+      navigate('participant-completed')
+    }
+    const onActivityReset = (_p: ActivityResetPayload) => {
+      // Host aborted the session and reset the activity to start mode — our
+      // Participant row is being wiped, so clear the local session and send
+      // the user back to the join screen.
+      setParticipant(null)
+      navigate('participant-join')
+    }
+    const onParticipantJoined = (p: ParticipantJoinedPayload) => {
+      setParticipantCount(p.count)
+    }
+    const onActivityStarted = () => {
+      setActivityStarted(true)
+    }
+
+    socket.on('question_started', onQuestionStarted)
+    socket.on('activity_completed', onActivityCompleted)
+    socket.on('activity_reset', onActivityReset)
+    socket.on('participant_joined', onParticipantJoined)
+    socket.on('activity_started', onActivityStarted)
+
+    return () => {
+      socket.off('question_started', onQuestionStarted)
+      socket.off('activity_completed', onActivityCompleted)
+      socket.off('activity_reset', onActivityReset)
+      socket.off('participant_joined', onParticipantJoined)
+      socket.off('activity_started', onActivityStarted)
+    }
+  }, [participant, navigate, setParticipant])
+
+  if (!participant) return null
+
+  return (
+    <div className="dark relative flex min-h-screen flex-col bg-[oklch(0.16_0.02_320)] text-white bg-stage-dark">
+      <main className="flex flex-1 items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center bg-primary/15 text-primary">
+              <Radio className="h-8 w-8" />
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+              You&apos;re in!
+            </p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+              Hi, {participant.displayName}
+            </h1>
+            {participant.uoid && (
+              <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-white/60">
+                <span className="inline-flex items-center border border-white/15 bg-white/5 px-2 py-0.5 font-mono tracking-wide">
+                  ID: {participant.uoid}
+                </span>
+              </p>
+            )}
+            <p className="mt-2 line-clamp-2 text-base text-white/70">
+              {participant.title}
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.15, duration: 0.4 }}
+            className="mt-8"
+          >
+            <Card className="border-2 border-white/15 bg-white/5 text-white shadow-lg backdrop-blur-md">
+              <CardContent className="py-8">
+                <div className="flex items-center justify-center gap-3 text-amber-400">
+                  <motion.span
+                    animate={{ scale: [1, 1.25, 1], opacity: [0.6, 1, 0.6] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                    className="h-3 w-3 bg-amber-500"
+                  />
+                  <span className="text-sm font-medium">
+                    {activityStarted
+                      ? 'Get ready — starting soon…'
+                      : ready
+                        ? 'Waiting for the host to start…'
+                        : 'Connecting…'}
+                  </span>
+                </div>
+                <div className="mt-6 flex items-center justify-center gap-2 text-sm text-white/60">
+                  <Users className="h-4 w-4" />
+                  <span className="font-semibold text-white">{participantCount}</span>
+                  <span>{participantCount === 1 ? 'participant' : 'participants'} joined</span>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      </main>
+      <AppFooter compact />
+    </div>
+  )
+}
