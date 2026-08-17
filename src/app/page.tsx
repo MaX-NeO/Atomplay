@@ -1,21 +1,48 @@
 'use client'
 
 import { useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { useAppStore } from '@/lib/store'
 import { api } from '@/lib/api-client'
 import type { AdminDTO } from '@/lib/types'
 
 import { LandingScreen } from '@/components/screens/landing-screen'
 import { AdminLoginScreen } from '@/components/screens/admin-login-screen'
-import { AdminDashboardScreen } from '@/components/screens/admin-dashboard-screen'
-import { ActivityEditorScreen } from '@/components/screens/activity-editor-screen'
-import { LivePresentationScreen } from '@/components/screens/live-presentation-screen'
-import { FinalResultsScreen } from '@/components/screens/final-results-screen'
-import { AdminManagementScreen } from '@/components/screens/admin-management-screen'
 import { ParticipantJoinScreen } from '@/components/screens/participant-join-screen'
-import { ParticipantLobbyScreen } from '@/components/screens/participant-lobby-screen'
-import { ParticipantQuestionScreen } from '@/components/screens/participant-question-screen'
-import { ParticipantCompletedScreen } from '@/components/screens/participant-completed-screen'
+
+// Lazy-load heavy screens that are only shown after navigation
+const AdminDashboardScreen = dynamic(
+  () => import('@/components/screens/admin-dashboard-screen').then((m) => ({ default: m.AdminDashboardScreen })),
+  { ssr: false },
+)
+const ActivityEditorScreen = dynamic(
+  () => import('@/components/screens/activity-editor-screen').then((m) => ({ default: m.ActivityEditorScreen })),
+  { ssr: false },
+)
+const LivePresentationScreen = dynamic(
+  () => import('@/components/screens/live-presentation-screen').then((m) => ({ default: m.LivePresentationScreen })),
+  { ssr: false },
+)
+const FinalResultsScreen = dynamic(
+  () => import('@/components/screens/final-results-screen').then((m) => ({ default: m.FinalResultsScreen })),
+  { ssr: false },
+)
+const AdminManagementScreen = dynamic(
+  () => import('@/components/screens/admin-management-screen').then((m) => ({ default: m.AdminManagementScreen })),
+  { ssr: false },
+)
+const ParticipantLobbyScreen = dynamic(
+  () => import('@/components/screens/participant-lobby-screen').then((m) => ({ default: m.ParticipantLobbyScreen })),
+  { ssr: false },
+)
+const ParticipantQuestionScreen = dynamic(
+  () => import('@/components/screens/participant-question-screen').then((m) => ({ default: m.ParticipantQuestionScreen })),
+  { ssr: false },
+)
+const ParticipantCompletedScreen = dynamic(
+  () => import('@/components/screens/participant-completed-screen').then((m) => ({ default: m.ParticipantCompletedScreen })),
+  { ssr: false },
+)
 
 export default function Home() {
   const screen = useAppStore((s) => s.screen)

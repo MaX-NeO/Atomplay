@@ -3,7 +3,7 @@ import { sign, verify } from 'jsonwebtoken'
 import { cookies } from 'next/headers'
 import { db } from '@/lib/db'
 
-const APP_SECRET = process.env.APP_SECRET || 'dev-secret-change-me'
+const APP_SECRET = process.env.APP_SECRET || process.env.NEXTAUTH_SECRET || 'dev-secret-change-me'
 const COOKIE_NAME = 'quiz_admin_token'
 const TOKEN_TTL_SECONDS = 60 * 60 * 12 // 12h
 

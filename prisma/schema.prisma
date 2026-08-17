@@ -1,25 +1,29 @@
 // Prisma schema for the Real-Time Quiz Activity Platform
-// See PRD: Admin -> Activity -> Question -> Answer / Participant
+// Optimized for Neon PostgreSQL
+//
+// Key optimizations over the SQLite schema:
+//   1. Native PostgreSQL enums (ActivityStatus, OptionKey, AdminRole)
+//      → DB-level constraint enforcement, no invalid states
+//   2. UUID primary keys (@default(uuid()))
+//      → globally unique, better for distributed inserts
+//   3. Composite indexes tuned for common query patterns
+//   4. Neon pooler for serverless, direct for migrations
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")           // pooled — used at runtime
+  directUrl = env("DATABASE_URL_UNPOOLED")  // un-pooled — used for migrations
 }
 
-model Admin {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         String   @default("ADMIN") // ADMIN | SUPER_ADMIN
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+// ─── Enums ───────────────────────────────────────────────────────────────────
 
-  activities Activity[] @relation("AdminActivities")
+enum AdminRole {
+  ADMIN
+  SUPER_ADMIN
 }
 
 enum ActivityStatus {
@@ -30,18 +34,41 @@ enum ActivityStatus {
   ARCHIVED
 }
 
+enum OptionKey {
+  A
+  B
+  C
+  D
+}
+
+// ─── Models ─────────────────────────────────────────────────────────────────
+
+model Admin {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         AdminRole  @default(ADMIN)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  activities Activity[] @relation("AdminActivities")
+
+  @@map("admins")
+}
+
 model Activity {
-  id                String   @id @default(cuid())
+  id                String         @id @default(uuid())
   title             String
-  description       String   @default("")
-  status            String   @default("DRAFT") // mirrors ActivityStatus enum (sqlite has no enum)
-  accessCode        String?  @unique // 6-digit code, set on publish
-  currentQuestionId String?  // currently active question id (when LIVE)
-  questionStartedAt DateTime? // server-side timestamp when current question started
-  questionEndsAt    DateTime? // server-side timestamp when current question must end
+  description       String         @default("")
+  status            ActivityStatus @default(DRAFT)
+  accessCode        String?        @unique // 6-digit code, set on publish
+  currentQuestionId String?        // currently active question id (when LIVE)
+  questionStartedAt DateTime?      // server-side timestamp when current question started
+  questionEndsAt    DateTime?      // server-side timestamp when current question must end
   createdBy         String
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
   startedAt         DateTime?
   endedAt           DateTime?
 
@@ -50,59 +77,67 @@ model Activity {
   participants Participant[]
   answers     Answer[]
 
-  @@index([accessCode])
-  @@index([status])
+  @@index([accessCode])                         // lookup by access code (join flow)
+  @@index([status])                             // filter by status (dashboard tabs, auto-expire ticker)
+  @@index([status, currentQuestionId])          // auto-expire ticker: WHERE status='LIVE' AND currentQuestionId IS NOT NULL AND questionEndsAt < now()
+  @@index([createdBy, createdAt])               // admin dashboard: list activities sorted by time
+  @@map("activities")
 }
 
 model Question {
-  id             String   @id @default(cuid())
-  activityId     String
-  questionOrder  Int
-  questionText   String
-  optionA        String
-  optionB        String
-  optionC        String
-  optionD        String
-  correctOption  String   // "A" | "B" | "C" | "D"
-  timeLimit      Int      @default(30) // seconds
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(uuid())
+  activityId    String
+  questionOrder Int
+  questionText  String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctOption OptionKey
+  timeLimit     Int       @default(30) // seconds
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   answers  Answer[]
 
-  @@index([activityId, questionOrder])
+  @@unique([activityId, questionOrder])          // enforce ordering within an activity
+  @@index([activityId])                          // activity detail: load all questions
+  @@map("questions")
 }
 
 model Participant {
-  id           String   @id @default(cuid())
-  activityId   String
-  sessionId    String   @unique // client-side session id (for reconnect)
-  uoid         String?  // player's unique org ID (roll number / employee id), unique per activity
-  displayName  String
-  joinedAt      DateTime @default(now())
-  lastSeenAt    DateTime @default(now())
+  id          String   @id @default(uuid())
+  activityId  String
+  sessionId   String   @unique // client-side session id (for reconnect)
+  uoid        String?  // player's unique org ID (roll number / employee id), unique per activity
+  displayName String
+  joinedAt    DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
 
   activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   answers  Answer[]
 
   @@unique([activityId, uoid]) // no duplicate UOID within the same activity (NULLs allowed)
-  @@index([activityId])
+  @@index([activityId])        // count participants per activity
+  @@map("participants")
 }
 
 model Answer {
-  id              String   @id @default(cuid())
-  activityId      String
-  questionId      String
-  participantId   String
-  selectedOption  String // "A" | "B" | "C" | "D"
-  isCorrect       Boolean
-  answeredAt       DateTime @default(now())
+  id             String    @id @default(uuid())
+  activityId     String
+  questionId     String
+  participantId  String
+  selectedOption OptionKey
+  isCorrect      Boolean
+  answeredAt     DateTime  @default(now())
 
   activity    Activity    @relation(fields: [activityId], references: [id], onDelete: Cascade)
   question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@unique([participantId, questionId]) // anti-duplicate answer (PRD §28)
-  @@index([questionId])
+  @@index([questionId])                // compute distribution per question
+  @@index([activityId, participantId])  // compute per-participant score for final results
+  @@map("answers")
 }

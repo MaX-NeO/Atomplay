@@ -25,7 +25,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setTheme('dark')
     }
     // Only run once on mount — `theme` is intentionally read at mount time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Apply the `dark` class on <html> whenever theme changes.

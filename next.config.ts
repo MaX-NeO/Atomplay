@@ -10,7 +10,8 @@ const nextConfig: NextConfig = {
   // cross-origin dev resources (chunks, HMR) in development.
   allowedDevOrigins: [
     ".space-z.ai",
-    "preview-chat-e9b5e055-a409-4142-bdeb-6aef1c2abe96.space-z.ai",
+    "127.0.0.1",
+    "localhost",
   ],
 };
 
