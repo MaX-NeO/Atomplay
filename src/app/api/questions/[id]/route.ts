@@ -3,7 +3,14 @@ import { db } from '@/lib/db'
 import { getAdminFromRequest } from '@/lib/auth'
 import { isValidOption, toQuestionDTO } from '@/lib/serializers'
 
-// PATCH /api/questions/[id] — admin only; require activity DRAFT.
+// PATCH /api/questions/[id] — admin only.
+// Editable in ANY activity status, EXCEPT the single question that is currently
+// being presented live (activity.status === 'LIVE' AND
+// activity.currentQuestionId === this question). Editing the live question
+// mid-flight would corrupt the active session (participants already saw the
+// old text/options). All other questions — including non-active questions in a
+// LIVE activity — are freely editable.
+//
 // Body may include any subset of: questionText, optionA, optionB, optionC, optionD,
 // correctOption, timeLimit.
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -21,9 +28,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (question.activity.createdBy !== admin.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  if (question.activity.status !== 'DRAFT') {
+  const isLiveQuestion =
+    question.activity.status === 'LIVE' &&
+    question.activity.currentQuestionId === question.id
+  if (isLiveQuestion) {
     return NextResponse.json(
-      { error: 'Question can only be edited while activity is in DRAFT status' },
+      {
+        error:
+          'This question is currently being presented live. End the current question before editing it.',
+      },
       { status: 409 },
     )
   }
@@ -62,8 +75,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   return NextResponse.json({ question: toQuestionDTO(updated) })
 }
 
-// DELETE /api/questions/[id] — admin only; require activity DRAFT.
-// After deletion, remaining questions are renumbered sequentially 1..N (atomic transaction).
+// DELETE /api/questions/[id] — admin only.
+// Allowed in ANY activity status, EXCEPT the currently-active live question
+// (deleting it mid-session would break the live presentation). After deletion,
+// remaining questions are renumbered sequentially 1..N (atomic transaction).
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const admin = await getAdminFromRequest()
@@ -79,9 +94,15 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (question.activity.createdBy !== admin.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-  if (question.activity.status !== 'DRAFT') {
+  const isLiveQuestion =
+    question.activity.status === 'LIVE' &&
+    question.activity.currentQuestionId === question.id
+  if (isLiveQuestion) {
     return NextResponse.json(
-      { error: 'Question can only be deleted while activity is in DRAFT status' },
+      {
+        error:
+          'This question is currently being presented live. End the current question before deleting it.',
+      },
       { status: 409 },
     )
   }

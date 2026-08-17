@@ -3,9 +3,12 @@ import { db } from '@/lib/db'
 import { getAdminFromRequest } from '@/lib/auth'
 import { isValidOption, toQuestionDTO } from '@/lib/serializers'
 
-// POST /api/activities/[id]/questions — add a question to a DRAFT activity.
+// POST /api/activities/[id]/questions — add a question to an activity.
+// Allowed in ANY activity status (DRAFT / PUBLISHED / LIVE / COMPLETED) so the
+// admin can append questions to an already-published activity without having
+// to clone it. The new question gets questionOrder = (max existing order)+1.
+//
 // Body: { questionText, optionA, optionB, optionC, optionD, correctOption, timeLimit? }
-// questionOrder is auto-set to (max existing order)+1, default timeLimit 30.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const admin = await getAdminFromRequest()
@@ -14,12 +17,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const activity = await db.activity.findFirst({ where: { id, createdBy: admin.id } })
   if (!activity) {
     return NextResponse.json({ error: 'Activity not found' }, { status: 404 })
-  }
-  if (activity.status !== 'DRAFT') {
-    return NextResponse.json(
-      { error: 'Questions can only be added while activity is in DRAFT status' },
-      { status: 409 },
-    )
   }
 
   let body: any

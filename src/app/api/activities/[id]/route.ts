@@ -23,7 +23,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return NextResponse.json({ activity: toActivityDTO(activity, activity.questions) })
 }
 
-// PATCH /api/activities/[id] — update title/description. Only allowed while status === DRAFT.
+// PATCH /api/activities/[id] — update title/description.
+// Editable in ANY status (DRAFT / PUBLISHED / LIVE / COMPLETED / ARCHIVED) so the
+// admin can fix typos or rename an activity at any time. Title/description are
+// metadata; they don't touch the question/answer data, so this is always safe.
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const admin = await getAdminFromRequest()
@@ -32,12 +35,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const activity = await db.activity.findFirst({ where: { id, createdBy: admin.id } })
   if (!activity) {
     return NextResponse.json({ error: 'Activity not found' }, { status: 404 })
-  }
-  if (activity.status !== 'DRAFT') {
-    return NextResponse.json(
-      { error: 'Activity can only be edited while in DRAFT status' },
-      { status: 409 },
-    )
   }
 
   let body: any

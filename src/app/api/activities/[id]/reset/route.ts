@@ -16,9 +16,8 @@ import { toActivityDTO } from '@/lib/serializers'
 //   The PRD state machine is DRAFT -> PUBLISHED -> LIVE -> COMPLETED.
 //   Reset is the inverse of "go live": it returns the activity to a ready-to-host
 //   state so the host can immediately present again with the SAME access code
-//   (so the audience can re-join seamlessly). The admin can still edit questions
-//   by going through the editor (which is allowed only in DRAFT, so they'd need
-//   to clone instead if they want to change content).
+//   (so the audience can re-join seamlessly). The admin can edit questions in
+//   any status, so content changes don't require a clone-and-reset workflow.
 //
 // Why LIVE is now allowed:
 //   The "Exit" button on the live presentation screen uses this endpoint to

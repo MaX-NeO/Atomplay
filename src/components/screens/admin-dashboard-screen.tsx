@@ -1055,6 +1055,10 @@ function ActivityCard({
           )}
           {activity.status === 'PUBLISHED' && (
             <>
+              <Button variant="outline" size="sm" onClick={onEdit} className="h-9 rounded-lg">
+                <Edit3 className="h-4 w-4" />
+                Edit
+              </Button>
               <Button onClick={onPresent} size="sm" className="h-9 rounded-lg">
                 <Play className="h-4 w-4" />
                 Present
@@ -1091,6 +1095,10 @@ function ActivityCard({
           )}
           {activity.status === 'LIVE' && (
             <>
+              <Button variant="outline" size="sm" onClick={onEdit} className="h-9 rounded-lg">
+                <Edit3 className="h-4 w-4" />
+                Edit
+              </Button>
               <Button onClick={onPresent} size="sm" className="h-9 rounded-lg">
                 <Play className="h-4 w-4" />
                 Present
@@ -1109,6 +1117,10 @@ function ActivityCard({
           )}
           {activity.status === 'COMPLETED' && (
             <>
+              <Button variant="outline" size="sm" onClick={onEdit} className="h-9 rounded-lg">
+                <Edit3 className="h-4 w-4" />
+                Edit
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

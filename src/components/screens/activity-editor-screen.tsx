@@ -41,6 +41,7 @@ import {
   Loader2,
   Plus,
   Presentation,
+  Radio,
   Save,
   Sparkles,
   Trash2,
@@ -208,10 +209,6 @@ export function ActivityEditorScreen() {
 
   async function handleAddQuestion() {
     if (!activity) return
-    if (activity.status !== 'DRAFT') {
-      toast.error('You can only add questions while the activity is a draft')
-      return
-    }
     try {
       const res = await api.post<{ question: QuestionDTO }>(
         `/api/activities/${activity.id}/questions`,
@@ -260,11 +257,6 @@ export function ActivityEditorScreen() {
   async function handleSaveTitle() {
     if (!activity) return
     if (titleDraft.trim() === activity.title) return
-    if (activity.status !== 'DRAFT') {
-      toast.error('Title can only be changed while the activity is a draft')
-      setTitleDraft(activity.title)
-      return
-    }
     if (!titleDraft.trim()) {
       setTitleDraft(activity.title)
       return
@@ -356,9 +348,16 @@ export function ActivityEditorScreen() {
     )
   }
 
-  const isDraft = activity.status === 'DRAFT'
   const questionCount = activity.questions?.length ?? 0
   const formInvalid = !isFormValid(form)
+
+  // The SELECTED question is locked only when the activity is LIVE and this
+  // question is the one currently being presented (activity.currentQuestionId).
+  // All other questions — and all non-LIVE activities — are fully editable.
+  const isLiveQuestion =
+    activity.status === 'LIVE' &&
+    activity.currentQuestionId != null &&
+    selectedQuestion?.id === activity.currentQuestionId
 
   return (
     <Shell>
@@ -380,7 +379,7 @@ export function ActivityEditorScreen() {
               onChange={(e) => setTitleDraft(e.target.value)}
               onBlur={handleSaveTitle}
               onKeyDown={handleTitleKeyDown}
-              disabled={!isDraft || savingTitle}
+              disabled={savingTitle}
               className="h-10 border-transparent bg-transparent px-2 text-base font-semibold hover:border-input focus-visible:border-input sm:text-lg"
               aria-label="Activity title"
             />
@@ -514,7 +513,7 @@ export function ActivityEditorScreen() {
                           {q.timeLimit}s · correct: {q.correctOption}
                         </p>
                       </div>
-                      {isDraft && (
+                      {!(activity.status === 'LIVE' && activity.currentQuestionId === q.id) && (
                         <span
                           role="button"
                           tabIndex={0}
@@ -544,15 +543,13 @@ export function ActivityEditorScreen() {
                   </p>
                 )}
               </div>
-              {isDraft && (
-                <Button
-                  onClick={handleAddQuestion}
-                  variant="outline"
-                  className="mt-3 w-full border-dashed"
-                >
-                  <Plus className="h-4 w-4" /> Add question
-                </Button>
-              )}
+              <Button
+                onClick={handleAddQuestion}
+                variant="outline"
+                className="mt-3 w-full border-dashed"
+              >
+                <Plus className="h-4 w-4" /> Add question
+              </Button>
             </ScrollArea>
           </aside>
 
@@ -577,17 +574,26 @@ export function ActivityEditorScreen() {
                           Edit question
                         </CardTitle>
                         <CardDescription>
-                          Keep it clear and concise. Tap a letter badge to mark the correct answer.
+                          {isLiveQuestion
+                            ? 'This question is currently live — end it on the presentation screen before editing.'
+                            : 'Keep it clear and concise. Tap a letter badge to mark the correct answer.'}
                         </CardDescription>
                       </div>
-                      {dirty && (
+                      {isLiveQuestion ? (
+                        <Badge
+                          variant="outline"
+                          className="border-rose-500/40 text-rose-600 dark:text-rose-400"
+                        >
+                          <Radio className="mr-1 h-3 w-3" /> Live
+                        </Badge>
+                      ) : dirty ? (
                         <Badge
                           variant="outline"
                           className="border-amber-500/40 text-amber-600 dark:text-amber-400"
                         >
                           Unsaved changes
                         </Badge>
-                      )}
+                      ) : null}
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="space-y-2">
@@ -598,7 +604,7 @@ export function ActivityEditorScreen() {
                           onChange={(e) => updateField('questionText', e.target.value)}
                           placeholder="Type your question…"
                           rows={3}
-                          disabled={!isDraft}
+                          disabled={isLiveQuestion}
                         />
                       </div>
 
@@ -624,7 +630,7 @@ export function ActivityEditorScreen() {
                                 <button
                                   type="button"
                                   onClick={() => updateField('correctOption', key)}
-                                  disabled={!isDraft}
+                                  disabled={isLiveQuestion}
                                   aria-label={`Mark option ${key} as correct`}
                                   aria-pressed={isCorrect}
                                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-colors ${
@@ -639,7 +645,7 @@ export function ActivityEditorScreen() {
                                   value={form[field]}
                                   onChange={(e) => updateField(field, e.target.value)}
                                   placeholder={`Option ${key}`}
-                                  disabled={!isDraft}
+                                  disabled={isLiveQuestion}
                                   className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
                                 />
                               </div>
@@ -660,7 +666,7 @@ export function ActivityEditorScreen() {
                           <Select
                             value={String(form.timeLimit)}
                             onValueChange={(v) => updateField('timeLimit', Number(v))}
-                            disabled={!isDraft}
+                            disabled={isLiveQuestion}
                           >
                             <SelectTrigger id="timeLimit" className="w-40">
                               <SelectValue />
@@ -676,7 +682,7 @@ export function ActivityEditorScreen() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {isDraft && (
+                          {!isLiveQuestion && (
                             <Button
                               variant="ghost"
                               onClick={() => setDeletingQuestion(selectedQuestion)}
@@ -687,7 +693,7 @@ export function ActivityEditorScreen() {
                           )}
                           <Button
                             onClick={handleSaveQuestion}
-                            disabled={!isDraft || formInvalid || saving || !dirty}
+                            disabled={isLiveQuestion || formInvalid || saving || !dirty}
                           >
                             {saving ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -713,11 +719,9 @@ export function ActivityEditorScreen() {
                   <p className="mt-3 text-sm text-muted-foreground">
                     Select a question on the left to edit, or add a new one.
                   </p>
-                  {isDraft && (
-                    <Button onClick={handleAddQuestion} variant="outline" className="mt-4">
-                      <Plus className="h-4 w-4" /> Add first question
-                    </Button>
-                  )}
+                  <Button onClick={handleAddQuestion} variant="outline" className="mt-4">
+                    <Plus className="h-4 w-4" /> Add first question
+                  </Button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -776,8 +780,8 @@ export function ActivityEditorScreen() {
               <DialogHeader>
                 <DialogTitle>Publish activity?</DialogTitle>
                 <DialogDescription>
-                  This will lock the activity and generate a 6-digit access code. You won&apos;t be
-                  able to edit questions after publishing.
+                  This will generate a 6-digit access code so participants can join. You can still
+                  edit the title, questions, and options after publishing.
                 </DialogDescription>
               </DialogHeader>
               <div className="rounded-xl bg-muted/40 p-3 text-sm">
