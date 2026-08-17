@@ -158,6 +158,19 @@
       radial-gradient(55% 45% at 90% 20%, oklch(0.78 0.18 70 / 0.16) 0%, transparent 55%),
       radial-gradient(70% 60% at 80% 100%, oklch(0.7 0.18 150 / 0.16) 0%, transparent 60%);
   }
+  /* Unified activity gradient — applied across the ENTIRE activity
+   * (admin live-presentation all phases + all participant screens).
+   * "Maximum dark" base (very dark plum) with a strong pink/magenta glow
+   * top-left transitioning to a mild orange/amber glow bottom-right, plus
+   * a subtle mid pink blend. Consistent with the home/lobby warm-pink vibe
+   * but darker and pink→orange only (no green). */
+  .bg-stage-activity {
+    background-color: oklch(0.13 0.025 320);
+    background-image:
+      radial-gradient(75% 60% at 12% 8%, oklch(0.72 0.25 340 / 0.40) 0%, transparent 60%),
+      radial-gradient(70% 55% at 88% 92%, oklch(0.80 0.17 70 / 0.32) 0%, transparent 60%),
+      radial-gradient(55% 50% at 50% 50%, oklch(0.55 0.22 350 / 0.16) 0%, transparent 70%);
+  }
   .gradient-text {
     background: linear-gradient(120deg, var(--primary), oklch(0.7 0.2 60));
     -webkit-background-clip: text;

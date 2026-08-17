@@ -48,30 +48,31 @@ interface AppState {
 const STORAGE_KEY = 'quiz-app-state'
 
 function readPersistedTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light'
+  // The app is dark-only by design. We still read localStorage so that any
+  // previously-persisted `light` value can be migrated away, but the fallback
+  // is always `dark`.
+  if (typeof window === 'undefined') return 'dark'
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return 'light'
+    if (!raw) return 'dark'
     const parsed = JSON.parse(raw)
-    return parsed.theme === 'dark' ? 'dark' : 'light'
+    return parsed.theme === 'dark' ? 'dark' : 'dark'
   } catch {
-    return 'light'
+    return 'dark'
   }
 }
 
 export const useAppStore = create<AppState>((set, get) => {
   // IMPORTANT: do NOT read localStorage during store initialization.
-  // SSR renders with `theme: 'light'`; if we read localStorage here the client
-  // first-render could start with 'dark', producing a hydration mismatch in any
-  // component that branches on `theme` (e.g. <Sun/> vs <Moon/> icons).
-  // The ThemeProvider is responsible for syncing the persisted value into the
-  // store AFTER mount (see src/components/theme-provider.tsx).
+  // SSR renders with `theme: 'dark'` (the app is dark-only by design) and the
+  // client first-render must match. The ThemeProvider is responsible for any
+  // post-mount persistence sync (see src/components/theme-provider.tsx).
   return {
     screen: 'landing',
     params: {},
     admin: null,
     participant: null,
-    theme: 'light',
+    theme: 'dark',
 
     navigate: (screen, params = {}) => {
       if (typeof window !== 'undefined') {

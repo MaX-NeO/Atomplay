@@ -1,58 +1,20 @@
 'use client'
 
-import { useSyncExternalStore } from 'react'
-import { Sun, Moon } from 'lucide-react'
-import { useAppStore } from '@/lib/store'
-import { Button } from '@/components/ui/button'
-
-interface ThemeToggleProps {
-  /** Tailwind size class for the icon (default: 'h-5 w-5'). */
-  iconClassName?: string
-  /** Button size variant (default: 'icon'). */
-  size?: 'icon' | 'sm' | 'default' | 'lg'
-  /** Extra classes for the button. */
-  className?: string
-}
-
 /**
- * Theme toggle button.
+ * ThemeToggle — DISABLED.
  *
- * Uses `useSyncExternalStore` to detect mount state and only swaps the icon
- * AFTER hydration — this avoids the classic SSR/CSR mismatch where the server
- * renders <Moon/> (because the store initializes with `theme: 'light'`) but the
- * client first-render tries to render <Sun/> (because the persisted theme is
- * `dark`).
+ * The app is DARK-ONLY by design (see src/components/theme-provider.tsx +
+ * src/app/layout.tsx). The toggle button used to flip between light and dark
+ * mode, but since the app now forces dark everywhere, there's nothing to
+ * toggle. This component renders `null` so every existing call site
+ * (app-header, landing, admin-login, admin-dashboard, admin-management,
+ * final-results) keeps working without any edits — the button simply
+ * disappears from those screens.
  *
- * Until mount, we render a placeholder button with the light-mode icon so the
- * layout is stable and the server/client markup match.
+ * Kept as a no-op export rather than deleted so the import sites don't have to
+ * be touched; if you want to remove the call sites entirely, grep for
+ * `<ThemeToggle` and delete each usage.
  */
-export function ThemeToggle({
-  iconClassName = 'h-5 w-5',
-  size = 'icon',
-  className,
-}: ThemeToggleProps) {
-  const theme = useAppStore((s) => s.theme)
-  const toggleTheme = useAppStore((s) => s.toggleTheme)
-
-  // false on the server and during the first client render, then true.
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true, // client snapshot
-    () => false, // server snapshot
-  )
-
-  const isDark = mounted && theme === 'dark'
-
-  return (
-    <Button
-      variant="ghost"
-      size={size}
-      onClick={toggleTheme}
-      aria-label="Toggle theme"
-      className={className}
-      suppressHydrationWarning
-    >
-      {isDark ? <Sun className={iconClassName} /> : <Moon className={iconClassName} />}
-    </Button>
-  )
+export function ThemeToggle() {
+  return null
 }

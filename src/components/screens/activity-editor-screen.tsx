@@ -44,7 +44,9 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Users,
 } from 'lucide-react'
+import { MAX_PARTICIPANTS_DISPLAY } from '@/lib/participant-icons'
 import type { ActivityDTO, ActivityStatus, OptionKey, QuestionDTO } from '@/lib/types'
 
 const OPTION_KEYS: OptionKey[] = ['A', 'B', 'C', 'D']
@@ -388,6 +390,19 @@ export function ActivityEditorScreen() {
           </form>
           <Badge variant="outline" className={STATUS_BADGE_CLASS[activity.status]}>
             {activity.status}
+          </Badge>
+          {/* Recommended max participants — DISPLAY ONLY. The join API
+              (`src/app/api/join/route.ts`) actually accepts up to 99, but the
+              admin-facing recommendation is 80 so hosts plan their room size
+              accordingly. See MAX_PARTICIPANTS_DISPLAY in
+              `src/lib/participant-icons.tsx`. */}
+          <Badge
+            variant="outline"
+            className="hidden items-center gap-1.5 border-primary/30 bg-primary/5 text-primary sm:inline-flex"
+            title={`Recommended room size — the join API accepts up to 99 participants`}
+          >
+            <Users className="h-3.5 w-3.5" />
+            Max {MAX_PARTICIPANTS_DISPLAY} participants
           </Badge>
           <div className="hidden items-center gap-2 sm:flex">
             {activity.status === 'DRAFT' ? (
@@ -774,6 +789,11 @@ export function ActivityEditorScreen() {
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Questions</span>
                   <span className="font-medium">{questionCount}</span>
+                </div>
+                <Separator className="my-2" />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Max participants</span>
+                  <span className="font-medium">{MAX_PARTICIPANTS_DISPLAY}</span>
                 </div>
               </div>
               <DialogFooter className="gap-2">

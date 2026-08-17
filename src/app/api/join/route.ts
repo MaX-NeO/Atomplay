@@ -49,6 +49,20 @@ export async function POST(req: Request) {
     )
   }
 
+  // Hard cap on concurrent participants. The admin-facing UI advertises a
+  // "recommended" 80-user limit (display only — see MAX_PARTICIPANTS_DISPLAY
+  // in src/lib/participant-icons.tsx), but the join API accepts up to 99 so a
+  // slightly larger room can still squeeze in. We pick 99 (not 100) so the
+  // 100-icon roster always has at least one spare slot — and because a
+  // 3-digit cap below 100 reads cleaner to hosts.
+  const currentCount = await db.participant.count({ where: { activityId: activity.id } })
+  if (currentCount >= 99) {
+    return NextResponse.json(
+      { error: 'This activity is full (max 99 participants)' },
+      { status: 409 },
+    )
+  }
+
   // sessionId is unique in DB; retry a few times in the astronomically unlikely event of a collision.
   let participant
   for (let attempt = 0; attempt < 3; attempt++) {

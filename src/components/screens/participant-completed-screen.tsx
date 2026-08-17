@@ -24,7 +24,7 @@ export function ParticipantCompletedScreen() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-background bg-stage">
+    <div className="relative flex min-h-screen flex-col bg-stage-activity text-white">
       {/* floating celebratory shapes */}
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
         {[...Array(6)].map((_, i) => (

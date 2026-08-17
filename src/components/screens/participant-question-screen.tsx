@@ -16,6 +16,7 @@ import type {
   QuestionEndedPayload,
   QuestionStartedPayload,
   ActivityResetPayload,
+  ParticipantKickedPayload,
 } from '@/lib/types'
 
 type Phase = 'connecting' | 'answering' | 'submitted' | 'reveal'
@@ -155,11 +156,20 @@ export function ParticipantQuestionScreen() {
       setParticipant(null)
       navigate('participant-join')
     })
+    socket.on('participant_kicked', (p: ParticipantKickedPayload) => {
+      // The host kicked us (matched by sessionId). Clear the session and
+      // send the user back to the join screen.
+      if (participant && p.sessionId === participant.sessionId) {
+        setParticipant(null)
+        navigate('participant-join')
+      }
+    })
     return () => {
       socket.off('question_started', handleQuestionStarted)
       socket.off('question_ended', handleQuestionEnded)
       socket.off('activity_completed')
       socket.off('activity_reset')
+      socket.off('participant_kicked')
     }
   }, [participant, navigate, handleQuestionStarted, handleQuestionEnded, setParticipant])
 
@@ -183,7 +193,7 @@ export function ParticipantQuestionScreen() {
   if (!participant) return null
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-background bg-stage">
+    <div className="relative flex min-h-screen flex-col bg-stage-activity text-white">
       <main className="flex flex-1 flex-col items-center justify-center px-4 py-6">
         <div className="w-full max-w-2xl">
           <AnimatePresence mode="wait">

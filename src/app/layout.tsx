@@ -30,18 +30,17 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Inline script that runs BEFORE React hydration: reads the persisted theme
-  // from localStorage and applies the `dark` class to <html>. This prevents:
-  //   1. A flash of the wrong theme (FOUC) for users with dark mode saved.
-  //   2. A React hydration mismatch — the store still initializes with
-  //      `theme: 'light'` on both server and client, so the rendered icon
-  //      markup matches. Only the <html> className differs, which is fine
-  //      because <html> already has `suppressHydrationWarning`.
+  // Inline script that runs BEFORE React hydration: unconditionally adds the
+  // `dark` class to <html>. The app is dark-only by design — every screen,
+  // sheet, and component renders in dark mode. Persisting anything else is a
+  // no-op (the ThemeProvider forces `theme: 'dark'` on mount regardless of the
+  // stored value), so there's no need to read localStorage here at all. The
+  // unconditional `dark` class prevents a flash of the (now-unused) light
+  // theme on first paint, and avoids a hydration mismatch because <html> has
+  // `suppressHydrationWarning` set below.
   const themeScript = `(() => {
     try {
-      const raw = localStorage.getItem('quiz-app-state');
-      const t = raw && JSON.parse(raw).theme === 'dark' ? 'dark' : 'light';
-      if (t === 'dark') document.documentElement.classList.add('dark');
+      document.documentElement.classList.add('dark');
     } catch (_) {}
   })();`;
 

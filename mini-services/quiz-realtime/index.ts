@@ -22,6 +22,7 @@ import type {
   ActivityStartedPayload,
   ActivityCompletedPayload,
   ActivityResetPayload,
+  ParticipantKickedPayload,
 } from './types'
 
 // ---------------------------------------------------------------------------
@@ -173,6 +174,7 @@ io.on('connection', (socket) => {
       const count = await db.participant.count({ where: { activityId } })
       const joined: ParticipantJoinedPayload = {
         activityId,
+        participantId: participant.id,
         count,
         displayName: participant.displayName,
         uoid: participant.uoid,
@@ -520,6 +522,51 @@ io.on('connection', (socket) => {
     } catch (e) {
       console.error('[reset_activity] error', e)
       socket.emit('error', { message: 'Failed to reset activity' })
+    }
+  })
+
+  // -------------------- Admin: kick a participant --------------------
+  // Removes the participant from the DB (cascade-deletes their answers),
+  // then broadcasts `participant_kicked` to the whole activity room so:
+  //   - the kicked participant's client navigates back to the join screen
+  //     (it matches on sessionId)
+  //   - the admin's lobby bubble list removes that participant
+  //   - the live participant count is updated everywhere.
+  socket.on('kick_participant', async (payloadRaw: unknown) => {
+    try {
+      const { activityId, participantId } = payloadRaw as {
+        activityId?: string
+        participantId?: string
+      }
+      const data = dataOf(socket)
+      if (data.role !== 'admin' || data.activityId !== activityId || !activityId || !participantId) {
+        socket.emit('error', { message: 'Not authorized' })
+        return
+      }
+      const participant = await db.participant.findUnique({
+        where: { id: participantId },
+        select: { id: true, sessionId: true, activityId: true },
+      })
+      if (!participant || participant.activityId !== activityId) {
+        socket.emit('error', { message: 'Participant not found for this activity' })
+        return
+      }
+      // Cascade deletes the participant's answers (FK onDelete: Cascade).
+      await db.participant.delete({ where: { id: participantId } })
+      const count = await db.participant.count({ where: { activityId } })
+      const payload: ParticipantKickedPayload = {
+        activityId,
+        participantId,
+        sessionId: participant.sessionId,
+        count,
+      }
+      io.to(roomFor(activityId)).emit('participant_kicked', payload)
+      console.log(
+        `[kick_participant] activity=${activityId} participant=${participantId} (session=${participant.sessionId}) removed; count=${count}`,
+      )
+    } catch (e) {
+      console.error('[kick_participant] error', e)
+      socket.emit('error', { message: 'Failed to kick participant' })
     }
   })
 

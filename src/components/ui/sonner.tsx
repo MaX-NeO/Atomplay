@@ -1,14 +1,16 @@
 "use client"
 
-import { useTheme } from "next-themes"
 import { Toaster as Sonner, ToasterProps } from "sonner"
 
+// The app is DARK-ONLY by design (see src/components/theme-provider.tsx), so we
+// hard-code the Sonner toaster to `theme="dark"` and drop the `next-themes`
+// dependency that the original shadcn/ui scaffolding wired up (it was reading
+// `useTheme()` from a NextThemesProvider that was never actually mounted, so the
+// toaster was following the OS preference instead of the app theme).
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
-
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme="dark"
       className="toaster group"
       style={
         {

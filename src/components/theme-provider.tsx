@@ -1,16 +1,15 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useAppStore, getInitialPersistedTheme } from '@/lib/store'
+import { useAppStore } from '@/lib/store'
 
 /**
  * ThemeProvider:
- * 1. On mount, reads the persisted theme from localStorage (if any) and pushes
- *    it into the store. This runs AFTER React hydration so it does NOT cause a
- *    server/client mismatch — the store always starts with `theme: 'light'`
- *    on both server and client first-render, then the persisted value is
- *    applied here on the client only.
- * 2. Applies the `dark` class on <html> whenever `theme` changes.
+ * The app is DARK-ONLY by design. On mount we force `theme: 'dark'` into the
+ * store — overriding any previously-persisted `light` preference — and write
+ * that back to localStorage so the persisted state stays consistent. A separate
+ * effect keeps the `dark` class on <html> in sync with the store (defensive —
+ * the inline script in layout.tsx already adds it before hydration).
  *
  * Mounted once near the root.
  */
@@ -18,13 +17,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
 
-  // Sync persisted theme into the store after mount.
+  // Force dark on mount. This migrates any user who previously persisted a
+  // light preference (back when the toggle existed) and ensures the store is
+  // always in dark mode regardless of what's in localStorage.
   useEffect(() => {
-    const persisted = getInitialPersistedTheme()
-    if (persisted !== theme) {
-      setTheme(persisted)
+    if (theme !== 'dark') {
+      setTheme('dark')
     }
     // Only run once on mount — `theme` is intentionally read at mount time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Apply the `dark` class on <html> whenever theme changes.

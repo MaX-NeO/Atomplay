@@ -74,7 +74,7 @@ export function ParticipantJoinScreen() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-background bg-stage">
+    <div className="relative flex min-h-screen flex-col bg-stage-activity text-white">
       <main className="flex flex-1 items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
           <div className="mb-8 text-center">

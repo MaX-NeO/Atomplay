@@ -41,6 +41,10 @@ export interface ResultsUpdatedPayload {
 
 export interface ParticipantJoinedPayload {
   activityId: string
+  // The participant's DB id — sent so the host can use it as a stable React
+  // key AND so `participant_kicked` (which carries the same id) can correctly
+  // remove the bubble even if the host never opened the participants sheet.
+  participantId: string
   count: number
   displayName: string
   uoid?: string | null
@@ -62,4 +66,11 @@ export interface ActivityCompletedPayload {
 
 export interface ActivityResetPayload {
   activityId: string
+}
+
+export interface ParticipantKickedPayload {
+  activityId: string
+  participantId: string
+  sessionId: string
+  count: number
 }

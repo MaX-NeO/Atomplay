@@ -14,6 +14,7 @@ import type {
   QuestionStartedPayload,
   ActivityCompletedPayload,
   ActivityResetPayload,
+  ParticipantKickedPayload,
 } from '@/lib/types'
 
 export function ParticipantLobbyScreen() {
@@ -89,6 +90,14 @@ export function ParticipantLobbyScreen() {
       setParticipant(null)
       navigate('participant-join')
     }
+    const onParticipantKicked = (p: ParticipantKickedPayload) => {
+      // The host kicked us (matched by sessionId). Clear the session and
+      // send the user back to the join screen with a toast.
+      if (participant && p.sessionId === participant.sessionId) {
+        setParticipant(null)
+        navigate('participant-join')
+      }
+    }
     const onParticipantJoined = (p: ParticipantJoinedPayload) => {
       setParticipantCount(p.count)
     }
@@ -99,6 +108,7 @@ export function ParticipantLobbyScreen() {
     socket.on('question_started', onQuestionStarted)
     socket.on('activity_completed', onActivityCompleted)
     socket.on('activity_reset', onActivityReset)
+    socket.on('participant_kicked', onParticipantKicked)
     socket.on('participant_joined', onParticipantJoined)
     socket.on('activity_started', onActivityStarted)
 
@@ -106,6 +116,7 @@ export function ParticipantLobbyScreen() {
       socket.off('question_started', onQuestionStarted)
       socket.off('activity_completed', onActivityCompleted)
       socket.off('activity_reset', onActivityReset)
+      socket.off('participant_kicked', onParticipantKicked)
       socket.off('participant_joined', onParticipantJoined)
       socket.off('activity_started', onActivityStarted)
     }
@@ -114,7 +125,7 @@ export function ParticipantLobbyScreen() {
   if (!participant) return null
 
   return (
-    <div className="dark relative flex min-h-screen flex-col bg-[oklch(0.16_0.02_320)] text-white bg-stage-dark">
+    <div className="relative flex min-h-screen flex-col bg-stage-activity text-white">
       <main className="flex flex-1 items-center justify-center px-4 py-8">
         <div className="w-full max-w-md text-center">
           <motion.div
