@@ -38,6 +38,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  GripVertical,
   Loader2,
   Plus,
   Presentation,
@@ -49,6 +50,22 @@ import {
 } from 'lucide-react'
 import { MAX_PARTICIPANTS_DISPLAY } from '@/lib/participant-icons'
 import type { ActivityDTO, ActivityStatus, OptionKey, QuestionDTO } from '@/lib/types'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const OPTION_KEYS: OptionKey[] = ['A', 'B', 'C', 'D']
 const TIME_LIMITS = [15, 30, 45, 60, 90, 120]
@@ -94,6 +111,107 @@ function isFormValid(f: QuestionFormState | null): boolean {
   )
 }
 
+// Sortable question card — uses @dnd-kit/sortable for drag-and-drop reordering.
+function SortableQuestionCard({
+  question,
+  order,
+  isSelected,
+  isLiveCurrent,
+  onSelect,
+  onDelete,
+}: {
+  question: QuestionDTO
+  order: number
+  isSelected: boolean
+  isLiveCurrent: boolean
+  onSelect: () => void
+  onDelete: () => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: question.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  }
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      onClick={onSelect}
+      className={`group flex w-full items-center gap-1.5 rounded-lg border-2 px-1.5 py-2 text-left transition-all ${
+        isSelected
+          ? 'border-primary bg-primary/5'
+          : 'border-border bg-card hover:border-primary/40 hover:bg-accent/40'
+      }`}
+    >
+      {/* Drag handle */}
+      <span
+        className="flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </span>
+
+      {/* Number badge */}
+      <span
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold ${
+          isSelected
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-muted text-muted-foreground'
+        }`}
+      >
+        {order}
+      </span>
+
+      {/* Question text */}
+      <div className="min-w-0 flex-1 pr-1">
+        <p className="truncate text-sm font-medium leading-tight">
+          {question.questionText || (
+            <span className="italic text-muted-foreground">Untitled question</span>
+          )}
+        </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground leading-tight">
+          {question.timeLimit}s · correct: {question.correctOption}
+        </p>
+      </div>
+
+      {/* Delete button */}
+      {!isLiveCurrent && (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Delete question ${order}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              onDelete()
+            }
+          }}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="h-3 w-3" />
+        </span>
+      )}
+    </button>
+  )
+}
+
 export function ActivityEditorScreen() {
   const navigate = useAppStore((s) => s.navigate)
   const params = useAppStore((s) => s.params)
@@ -112,6 +230,12 @@ export function ActivityEditorScreen() {
   const [titleDraft, setTitleDraft] = useState('')
   const [savingTitle, setSavingTitle] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
+
+  // Drag-and-drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   const fetchActivity = useCallback(async () => {
     if (!activityId) return
@@ -141,6 +265,44 @@ export function ActivityEditorScreen() {
   useEffect(() => {
     void fetchActivity()
   }, [fetchActivity])
+
+  // Reorder handler — called when a drag ends
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id || !activity) return
+
+      const oldQuestions = activity.questions ?? []
+      const oldIndex = oldQuestions.findIndex((q) => q.id === active.id)
+      const newIndex = oldQuestions.findIndex((q) => q.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      // Optimistically reorder locally
+      const reordered = [...oldQuestions]
+      const [moved] = reordered.splice(oldIndex, 1)
+      reordered.splice(newIndex, 0, moved)
+
+      // Update local state with new order (reassign questionOrder)
+      const withNewOrder = reordered.map((q, i) => ({ ...q, questionOrder: i + 1 }))
+      setActivity({ ...activity, questions: withNewOrder })
+
+      // Persist to server
+      try {
+        const res = await api.patch<{ questions: QuestionDTO[] }>(
+          `/api/activities/${activityId}/questions/reorder`,
+          { questionIds: withNewOrder.map((q) => q.id) },
+        )
+        // Use server response as source of truth
+        setActivity({ ...activity, questions: res.questions })
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'Failed to reorder questions'
+        toast.error(msg)
+        // Revert on error
+        void fetchActivity()
+      }
+    },
+    [activity, activityId, fetchActivity],
+  )
 
   // Sync form when selectedId changes.
   useEffect(() => {
@@ -320,9 +482,9 @@ export function ActivityEditorScreen() {
   if (loading) {
     return (
       <Shell>
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="px-4 py-8 sm:px-6 lg:px-8">
           <Skeleton className="mb-6 h-12 w-72" />
-          <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+          <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />
@@ -338,7 +500,7 @@ export function ActivityEditorScreen() {
   if (!activity) {
     return (
       <Shell>
-        <div className="mx-auto max-w-7xl px-4 py-12 text-center sm:px-6 lg:px-8">
+        <div className="px-4 py-12 text-center sm:px-6 lg:px-8">
           <p className="text-muted-foreground">Activity not found.</p>
           <Button variant="ghost" onClick={() => navigate('admin-dashboard')} className="mt-4">
             <ArrowLeft className="h-4 w-4" /> Back to dashboard
@@ -363,7 +525,7 @@ export function ActivityEditorScreen() {
     <Shell>
       {/* Top bar */}
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <Button
             variant="ghost"
             size="icon"
@@ -471,8 +633,8 @@ export function ActivityEditorScreen() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+      <main className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
           {/* Question list */}
           <aside className="lg:sticky lg:top-28 lg:self-start">
             <div className="mb-2 flex items-center justify-between">
@@ -480,69 +642,36 @@ export function ActivityEditorScreen() {
                 Questions ({questionCount})
               </h2>
             </div>
-            <ScrollArea className="h-[calc(100vh-14rem)] pr-3">
-              <div className="space-y-2">
-                {(activity.questions ?? []).map((q, i) => {
-                  const isSelected = q.id === selectedId
-                  return (
-                    <button
-                      key={q.id}
-                      onClick={() => setSelectedId(q.id)}
-                      className={`group relative flex w-full items-start gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-all ${
-                        isSelected
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border bg-card hover:border-primary/40 hover:bg-accent/40'
-                      }`}
-                    >
-                      <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
-                          isSelected
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground'
-                        }`}
-                      >
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
-                          {q.questionText || (
-                            <span className="italic text-muted-foreground">Untitled question</span>
-                          )}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {q.timeLimit}s · correct: {q.correctOption}
-                        </p>
-                      </div>
-                      {!(activity.status === 'LIVE' && activity.currentQuestionId === q.id) && (
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`Delete question ${i + 1}`}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDeletingQuestion(q)
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              setDeletingQuestion(q)
-                            }
-                          }}
-                          className="absolute right-1.5 top-1.5 hidden h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:flex"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-                {questionCount === 0 && (
-                  <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-                    No questions yet. Add your first one!
-                  </p>
-                )}
-              </div>
+            <ScrollArea className="h-[calc(100vh-14rem)]">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={(activity.questions ?? []).map((q) => q.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {(activity.questions ?? []).map((q, i) => (
+                      <SortableQuestionCard
+                        key={q.id}
+                        question={q}
+                        order={i + 1}
+                        isSelected={q.id === selectedId}
+                        isLiveCurrent={activity.status === 'LIVE' && activity.currentQuestionId === q.id}
+                        onSelect={() => setSelectedId(q.id)}
+                        onDelete={() => setDeletingQuestion(q)}
+                      />
+                    ))}
+                    {questionCount === 0 && (
+                      <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+                        No questions yet. Add your first one!
+                      </p>
+                    )}
+                  </div>
+                </SortableContext>
+              </DndContext>
               <Button
                 onClick={handleAddQuestion}
                 variant="outline"

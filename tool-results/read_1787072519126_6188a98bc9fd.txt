@@ -1,0 +1,989 @@
+     1→'use client'
+     2→
+     3→import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+     4→import { useAppStore } from '@/lib/store'
+     5→import { api, ApiError } from '@/lib/api-client'
+     6→import { AppFooter } from '@/components/shared/app-footer'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Textarea } from '@/components/ui/textarea'
+    11→import { Label } from '@/components/ui/label'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Skeleton } from '@/components/ui/skeleton'
+    14→import { ScrollArea } from '@/components/ui/scroll-area'
+    15→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    16→import { Separator } from '@/components/ui/separator'
+    17→import {
+    18→  Dialog,
+    19→  DialogContent,
+    20→  DialogDescription,
+    21→  DialogFooter,
+    22→  DialogHeader,
+    23→  DialogTitle,
+    24→} from '@/components/ui/dialog'
+    25→import {
+    26→  AlertDialog,
+    27→  AlertDialogAction,
+    28→  AlertDialogCancel,
+    29→  AlertDialogContent,
+    30→  AlertDialogDescription,
+    31→  AlertDialogFooter,
+    32→  AlertDialogHeader,
+    33→  AlertDialogTitle,
+    34→} from '@/components/ui/alert-dialog'
+    35→import { motion, AnimatePresence } from 'framer-motion'
+    36→import { toast } from 'sonner'
+    37→import {
+    38→  ArrowLeft,
+    39→  Check,
+    40→  Copy,
+    41→  GripVertical,
+    42→  Loader2,
+    43→  Plus,
+    44→  Presentation,
+    45→  Radio,
+    46→  Save,
+    47→  Sparkles,
+    48→  Trash2,
+    49→  Users,
+    50→} from 'lucide-react'
+    51→import { MAX_PARTICIPANTS_DISPLAY } from '@/lib/participant-icons'
+    52→import type { ActivityDTO, ActivityStatus, OptionKey, QuestionDTO } from '@/lib/types'
+    53→import {
+    54→  DndContext,
+    55→  closestCenter,
+    56→  KeyboardSensor,
+    57→  PointerSensor,
+    58→  useSensor,
+    59→  useSensors,
+    60→  type DragEndEvent,
+    61→} from '@dnd-kit/core'
+    62→import {
+    63→  SortableContext,
+    64→  sortableKeyboardCoordinates,
+    65→  useSortable,
+    66→  verticalListSortingStrategy,
+    67→} from '@dnd-kit/sortable'
+    68→import { CSS } from '@dnd-kit/utilities'
+    69→
+    70→const OPTION_KEYS: OptionKey[] = ['A', 'B', 'C', 'D']
+    71→const TIME_LIMITS = [15, 30, 45, 60, 90, 120]
+    72→
+    73→const STATUS_BADGE_CLASS: Record<ActivityStatus, string> = {
+    74→  DRAFT: 'bg-muted text-muted-foreground border-border',
+    75→  PUBLISHED: 'border-chart-3/40 bg-chart-3/15 text-chart-3',
+    76→  LIVE: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+    77→  COMPLETED: 'border-chart-4/40 bg-chart-4/15 text-chart-4',
+    78→  ARCHIVED: 'bg-muted text-muted-foreground border-border',
+    79→}
+    80→
+    81→interface QuestionFormState {
+    82→  questionText: string
+    83→  optionA: string
+    84→  optionB: string
+    85→  optionC: string
+    86→  optionD: string
+    87→  correctOption: OptionKey
+    88→  timeLimit: number
+    89→}
+    90→
+    91→function toFormState(q: QuestionDTO): QuestionFormState {
+    92→  return {
+    93→    questionText: q.questionText,
+    94→    optionA: q.optionA,
+    95→    optionB: q.optionB,
+    96→    optionC: q.optionC,
+    97→    optionD: q.optionD,
+    98→    correctOption: q.correctOption,
+    99→    timeLimit: q.timeLimit,
+   100→  }
+   101→}
+   102→
+   103→function isFormValid(f: QuestionFormState | null): boolean {
+   104→  if (!f) return false
+   105→  return (
+   106→    f.questionText.trim().length > 0 &&
+   107→    f.optionA.trim().length > 0 &&
+   108→    f.optionB.trim().length > 0 &&
+   109→    f.optionC.trim().length > 0 &&
+   110→    f.optionD.trim().length > 0
+   111→  )
+   112→}
+   113→
+   114→// Sortable question card — uses @dnd-kit/sortable for drag-and-drop reordering.
+   115→function SortableQuestionCard({
+   116→  question,
+   117→  order,
+   118→  isSelected,
+   119→  isLiveCurrent,
+   120→  onSelect,
+   121→  onDelete,
+   122→}: {
+   123→  question: QuestionDTO
+   124→  order: number
+   125→  isSelected: boolean
+   126→  isLiveCurrent: boolean
+   127→  onSelect: () => void
+   128→  onDelete: () => void
+   129→}) {
+   130→  const {
+   131→    attributes,
+   132→    listeners,
+   133→    setNodeRef,
+   134→    transform,
+   135→    transition,
+   136→    isDragging,
+   137→  } = useSortable({ id: question.id })
+   138→
+   139→  const style = {
+   140→    transform: CSS.Transform.toString(transform),
+   141→    transition,
+   142→    opacity: isDragging ? 0.5 : 1,
+   143→    zIndex: isDragging ? 50 : undefined,
+   144→  }
+   145→
+   146→  return (
+   147→    <button
+   148→      ref={setNodeRef}
+   149→      style={style}
+   150→      onClick={onSelect}
+   151→      className={`group flex w-full items-center gap-1.5 rounded-lg border-2 px-1.5 py-2 text-left transition-all ${
+   152→        isSelected
+   153→          ? 'border-primary bg-primary/5'
+   154→          : 'border-border bg-card hover:border-primary/40 hover:bg-accent/40'
+   155→      }`}
+   156→    >
+   157→      {/* Drag handle */}
+   158→      <span
+   159→        className="flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
+   160→        {...attributes}
+   161→        {...listeners}
+   162→      >
+   163→        <GripVertical className="h-3.5 w-3.5" />
+   164→      </span>
+   165→
+   166→      {/* Number badge */}
+   167→      <span
+   168→        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold ${
+   169→          isSelected
+   170→            ? 'bg-primary text-primary-foreground'
+   171→            : 'bg-muted text-muted-foreground'
+   172→        }`}
+   173→      >
+   174→        {order}
+   175→      </span>
+   176→
+   177→      {/* Question text */}
+   178→      <div className="min-w-0 flex-1 pr-1">
+   179→        <p className="truncate text-sm font-medium leading-tight">
+   180→          {question.questionText || (
+   181→            <span className="italic text-muted-foreground">Untitled question</span>
+   182→          )}
+   183→        </p>
+   184→        <p className="mt-0.5 text-[11px] text-muted-foreground leading-tight">
+   185→          {question.timeLimit}s · correct: {question.correctOption}
+   186→        </p>
+   187→      </div>
+   188→
+   189→      {/* Delete button */}
+   190→      {!isLiveCurrent && (
+   191→        <span
+   192→          role="button"
+   193→          tabIndex={0}
+   194→          aria-label={`Delete question ${order}`}
+   195→          onClick={(e) => {
+   196→            e.stopPropagation()
+   197→            onDelete()
+   198→          }}
+   199→          onKeyDown={(e) => {
+   200→            if (e.key === 'Enter' || e.key === ' ') {
+   201→              e.preventDefault()
+   202→              e.stopPropagation()
+   203→              onDelete()
+   204→            }
+   205→          }}
+   206→          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
+   207→        >
+   208→          <Trash2 className="h-3 w-3" />
+   209→        </span>
+   210→      )}
+   211→    </button>
+   212→  )
+   213→}
+   214→
+   215→export function ActivityEditorScreen() {
+   216→  const navigate = useAppStore((s) => s.navigate)
+   217→  const params = useAppStore((s) => s.params)
+   218→  const activityId = params.activityId
+   219→
+   220→  const [activity, setActivity] = useState<ActivityDTO | null>(null)
+   221→  const [loading, setLoading] = useState(true)
+   222→  const [selectedId, setSelectedId] = useState<string | null>(null)
+   223→  const [form, setForm] = useState<QuestionFormState | null>(null)
+   224→  const [dirty, setDirty] = useState(false)
+   225→  const [saving, setSaving] = useState(false)
+   226→  const [publishOpen, setPublishOpen] = useState(false)
+   227→  const [publishing, setPublishing] = useState(false)
+   228→  const [publishResult, setPublishResult] = useState<ActivityDTO | null>(null)
+   229→  const [deletingQuestion, setDeletingQuestion] = useState<QuestionDTO | null>(null)
+   230→  const [titleDraft, setTitleDraft] = useState('')
+   231→  const [savingTitle, setSavingTitle] = useState(false)
+   232→  const titleInputRef = useRef<HTMLInputElement>(null)
+   233→
+   234→  // Drag-and-drop sensors
+   235→  const sensors = useSensors(
+   236→    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+   237→    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+   238→  )
+   239→
+   240→  const fetchActivity = useCallback(async () => {
+   241→    if (!activityId) return
+   242→    setLoading(true)
+   243→    try {
+   244→      const res = await api.get<{ activity: ActivityDTO }>(`/api/activities/${activityId}`)
+   245→      setActivity(res.activity)
+   246→      setTitleDraft(res.activity.title)
+   247→      setSelectedId((prev) => {
+   248→        const exists = res.activity.questions?.some((q) => q.id === prev)
+   249→        if (exists) return prev
+   250→        return res.activity.questions?.[0]?.id ?? null
+   251→      })
+   252→    } catch (err) {
+   253→      const msg = err instanceof ApiError ? err.message : 'Failed to load activity'
+   254→      toast.error(msg)
+   255→      if (err instanceof ApiError && err.status === 401) {
+   256→        navigate('admin-login')
+   257→      } else if (err instanceof ApiError && err.status === 404) {
+   258→        navigate('admin-dashboard')
+   259→      }
+   260→    } finally {
+   261→      setLoading(false)
+   262→    }
+   263→  }, [activityId, navigate])
+   264→
+   265→  useEffect(() => {
+   266→    void fetchActivity()
+   267→  }, [fetchActivity])
+   268→
+   269→  // Reorder handler — called when a drag ends
+   270→  const handleDragEnd = useCallback(
+   271→    async (event: DragEndEvent) => {
+   272→      const { active, over } = event
+   273→      if (!over || active.id === over.id || !activity) return
+   274→
+   275→      const oldQuestions = activity.questions ?? []
+   276→      const oldIndex = oldQuestions.findIndex((q) => q.id === active.id)
+   277→      const newIndex = oldQuestions.findIndex((q) => q.id === over.id)
+   278→      if (oldIndex === -1 || newIndex === -1) return
+   279→
+   280→      // Optimistically reorder locally
+   281→      const reordered = [...oldQuestions]
+   282→      const [moved] = reordered.splice(oldIndex, 1)
+   283→      reordered.splice(newIndex, 0, moved)
+   284→
+   285→      // Update local state with new order (reassign questionOrder)
+   286→      const withNewOrder = reordered.map((q, i) => ({ ...q, questionOrder: i + 1 }))
+   287→      setActivity({ ...activity, questions: withNewOrder })
+   288→
+   289→      // Persist to server
+   290→      try {
+   291→        const res = await api.patch<{ questions: QuestionDTO[] }>(
+   292→          `/api/activities/${activityId}/questions/reorder`,
+   293→          { questionIds: withNewOrder.map((q) => q.id) },
+   294→        )
+   295→        // Use server response as source of truth
+   296→        setActivity({ ...activity, questions: res.questions })
+   297→      } catch (err) {
+   298→        const msg = err instanceof ApiError ? err.message : 'Failed to reorder questions'
+   299→        toast.error(msg)
+   300→        // Revert on error
+   301→        void fetchActivity()
+   302→      }
+   303→    },
+   304→    [activity, activityId, fetchActivity],
+   305→  )
+   306→
+   307→  // Sync form when selectedId changes.
+   308→  useEffect(() => {
+   309→    if (!activity || !selectedId) {
+   310→      setForm(null)
+   311→      setDirty(false)
+   312→      return
+   313→    }
+   314→    const q = activity.questions?.find((x) => x.id === selectedId)
+   315→    if (q) {
+   316→      setForm(toFormState(q))
+   317→      setDirty(false)
+   318→    }
+   319→  }, [selectedId, activity])
+   320→
+   321→  const selectedQuestion = useMemo(() => {
+   322→    if (!activity || !selectedId) return null
+   323→    return activity.questions?.find((q) => q.id === selectedId) ?? null
+   324→  }, [activity, selectedId])
+   325→
+   326→  function updateField<K extends keyof QuestionFormState>(field: K, value: QuestionFormState[K]) {
+   327→    if (!form) return
+   328→    setForm({ ...form, [field]: value })
+   329→    setDirty(true)
+   330→  }
+   331→
+   332→  async function handleSaveQuestion() {
+   333→    if (!form || !selectedQuestion) return
+   334→    if (!isFormValid(form)) {
+   335→      toast.error('Question text and all 4 options are required')
+   336→      return
+   337→    }
+   338→    setSaving(true)
+   339→    try {
+   340→      const res = await api.patch<{ question: QuestionDTO }>(
+   341→        `/api/questions/${selectedQuestion.id}`,
+   342→        {
+   343→          questionText: form.questionText,
+   344→          optionA: form.optionA,
+   345→          optionB: form.optionB,
+   346→          optionC: form.optionC,
+   347→          optionD: form.optionD,
+   348→          correctOption: form.correctOption,
+   349→          timeLimit: form.timeLimit,
+   350→        },
+   351→      )
+   352→      setActivity((prev) =>
+   353→        prev
+   354→          ? {
+   355→              ...prev,
+   356→              questions: prev.questions?.map((q) =>
+   357→                q.id === res.question.id ? res.question : q,
+   358→              ),
+   359→            }
+   360→          : prev,
+   361→      )
+   362→      setDirty(false)
+   363→      toast.success('Question saved')
+   364→    } catch (err) {
+   365→      const msg = err instanceof ApiError ? err.message : 'Failed to save question'
+   366→      toast.error(msg)
+   367→    } finally {
+   368→      setSaving(false)
+   369→    }
+   370→  }
+   371→
+   372→  async function handleAddQuestion() {
+   373→    if (!activity) return
+   374→    try {
+   375→      const res = await api.post<{ question: QuestionDTO }>(
+   376→        `/api/activities/${activity.id}/questions`,
+   377→        {
+   378→          questionText: 'New question',
+   379→          optionA: 'Option A',
+   380→          optionB: 'Option B',
+   381→          optionC: 'Option C',
+   382→          optionD: 'Option D',
+   383→          correctOption: 'A',
+   384→          timeLimit: 30,
+   385→        },
+   386→      )
+   387→      setActivity((prev) =>
+   388→        prev
+   389→          ? { ...prev, questions: [...(prev.questions ?? []), res.question] }
+   390→          : prev,
+   391→      )
+   392→      setSelectedId(res.question.id)
+   393→      toast.success('Question added')
+   394→    } catch (err) {
+   395→      const msg = err instanceof ApiError ? err.message : 'Failed to add question'
+   396→      toast.error(msg)
+   397→    }
+   398→  }
+   399→
+   400→  async function handleDeleteQuestion() {
+   401→    if (!deletingQuestion || !activity) return
+   402→    const targetId = deletingQuestion.id
+   403→    try {
+   404→      await api.delete(`/api/questions/${targetId}`)
+   405→      const remaining = (activity.questions ?? []).filter((q) => q.id !== targetId)
+   406→      setActivity({ ...activity, questions: remaining })
+   407→      if (selectedId === targetId) {
+   408→        setSelectedId(remaining[0]?.id ?? null)
+   409→      }
+   410→      toast.success('Question deleted')
+   411→    } catch (err) {
+   412→      const msg = err instanceof ApiError ? err.message : 'Failed to delete question'
+   413→      toast.error(msg)
+   414→    } finally {
+   415→      setDeletingQuestion(null)
+   416→    }
+   417→  }
+   418→
+   419→  async function handleSaveTitle() {
+   420→    if (!activity) return
+   421→    if (titleDraft.trim() === activity.title) return
+   422→    if (!titleDraft.trim()) {
+   423→      setTitleDraft(activity.title)
+   424→      return
+   425→    }
+   426→    setSavingTitle(true)
+   427→    try {
+   428→      const res = await api.patch<{ activity: ActivityDTO }>(`/api/activities/${activity.id}`, {
+   429→        title: titleDraft.trim(),
+   430→      })
+   431→      setActivity((prev) => (prev ? { ...prev, title: res.activity.title } : prev))
+   432→      toast.success('Title updated')
+   433→    } catch (err) {
+   434→      const msg = err instanceof ApiError ? err.message : 'Failed to update title'
+   435→      toast.error(msg)
+   436→      setTitleDraft(activity.title)
+   437→    } finally {
+   438→      setSavingTitle(false)
+   439→    }
+   440→  }
+   441→
+   442→  function handleTitleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+   443→    if (e.key === 'Enter') {
+   444→      e.preventDefault()
+   445→      e.currentTarget.blur()
+   446→    }
+   447→  }
+   448→
+   449→  async function handlePublish() {
+   450→    if (!activity) return
+   451→    setPublishing(true)
+   452→    try {
+   453→      const res = await api.post<{ activity: ActivityDTO }>(
+   454→        `/api/activities/${activity.id}/publish`,
+   455→      )
+   456→      setActivity(res.activity)
+   457→      setPublishResult(res.activity)
+   458→      toast.success('Activity published!')
+   459→    } catch (err) {
+   460→      const msg = err instanceof ApiError ? err.message : 'Failed to publish'
+   461→      toast.error(msg)
+   462→    } finally {
+   463→      setPublishing(false)
+   464→    }
+   465→  }
+   466→
+   467→  function handleTitleSubmit(e: FormEvent) {
+   468→    e.preventDefault()
+   469→    titleInputRef.current?.blur()
+   470→  }
+   471→
+   472→  async function copyAccessCode(code: string) {
+   473→    try {
+   474→      await navigator.clipboard.writeText(code)
+   475→      toast.success('Access code copied')
+   476→    } catch {
+   477→      toast.error('Could not copy code')
+   478→    }
+   479→  }
+   480→
+   481→  // ---------- Loading ----------
+   482→  if (loading) {
+   483→    return (
+   484→      <Shell>
+   485→        <div className="px-4 py-8 sm:px-6 lg:px-8">
+   486→          <Skeleton className="mb-6 h-12 w-72" />
+   487→          <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
+   488→            <div className="space-y-3">
+   489→              {Array.from({ length: 3 }).map((_, i) => (
+   490→                <Skeleton key={i} className="h-16 w-full" />
+   491→              ))}
+   492→            </div>
+   493→            <Skeleton className="h-96 w-full" />
+   494→          </div>
+   495→        </div>
+   496→      </Shell>
+   497→    )
+   498→  }
+   499→
+   500→  if (!activity) {
+   501→    return (
+   502→      <Shell>
+   503→        <div className="px-4 py-12 text-center sm:px-6 lg:px-8">
+   504→          <p className="text-muted-foreground">Activity not found.</p>
+   505→          <Button variant="ghost" onClick={() => navigate('admin-dashboard')} className="mt-4">
+   506→            <ArrowLeft className="h-4 w-4" /> Back to dashboard
+   507→          </Button>
+   508→        </div>
+   509→      </Shell>
+   510→    )
+   511→  }
+   512→
+   513→  const questionCount = activity.questions?.length ?? 0
+   514→  const formInvalid = !isFormValid(form)
+   515→
+   516→  // The SELECTED question is locked only when the activity is LIVE and this
+   517→  // question is the one currently being presented (activity.currentQuestionId).
+   518→  // All other questions — and all non-LIVE activities — are fully editable.
+   519→  const isLiveQuestion =
+   520→    activity.status === 'LIVE' &&
+   521→    activity.currentQuestionId != null &&
+   522→    selectedQuestion?.id === activity.currentQuestionId
+   523→
+   524→  return (
+   525→    <Shell>
+   526→      {/* Top bar */}
+   527→      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
+   528→        <div className="flex items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+   529→          <Button
+   530→            variant="ghost"
+   531→            size="icon"
+   532→            onClick={() => navigate('admin-dashboard')}
+   533→            aria-label="Back to dashboard"
+   534→          >
+   535→            <ArrowLeft className="h-4 w-4" />
+   536→          </Button>
+   537→          <form className="relative min-w-0 flex-1" onSubmit={handleTitleSubmit}>
+   538→            <Input
+   539→              ref={titleInputRef}
+   540→              value={titleDraft}
+   541→              onChange={(e) => setTitleDraft(e.target.value)}
+   542→              onBlur={handleSaveTitle}
+   543→              onKeyDown={handleTitleKeyDown}
+   544→              disabled={savingTitle}
+   545→              className="h-10 border-transparent bg-transparent px-2 text-base font-semibold hover:border-input focus-visible:border-input sm:text-lg"
+   546→              aria-label="Activity title"
+   547→            />
+   548→            {savingTitle && (
+   549→              <Loader2 className="absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+   550→            )}
+   551→          </form>
+   552→          <Badge variant="outline" className={STATUS_BADGE_CLASS[activity.status]}>
+   553→            {activity.status}
+   554→          </Badge>
+   555→          {/* Recommended max participants — DISPLAY ONLY. The join API
+   556→              (`src/app/api/join/route.ts`) actually accepts up to 99, but the
+   557→              admin-facing recommendation is 80 so hosts plan their room size
+   558→              accordingly. See MAX_PARTICIPANTS_DISPLAY in
+   559→              `src/lib/participant-icons.tsx`. */}
+   560→          <Badge
+   561→            variant="outline"
+   562→            className="hidden items-center gap-1.5 border-primary/30 bg-primary/5 text-primary sm:inline-flex"
+   563→            title={`Recommended room size — the join API accepts up to 99 participants`}
+   564→          >
+   565→            <Users className="h-3.5 w-3.5" />
+   566→            Max {MAX_PARTICIPANTS_DISPLAY} participants
+   567→          </Badge>
+   568→          <div className="hidden items-center gap-2 sm:flex">
+   569→            {activity.status === 'DRAFT' ? (
+   570→              <Button
+   571→                onClick={() => setPublishOpen(true)}
+   572→                disabled={questionCount === 0 || publishing}
+   573→                size="sm"
+   574→              >
+   575→                <Sparkles className="h-4 w-4" /> Publish
+   576→              </Button>
+   577→            ) : (
+   578→              <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1">
+   579→                <span className="font-mono text-sm font-bold tracking-widest">
+   580→                  {activity.accessCode ?? '------'}
+   581→                </span>
+   582→                <Button
+   583→                  variant="ghost"
+   584→                  size="icon"
+   585→                  className="h-7 w-7"
+   586→                  onClick={() => activity.accessCode && copyAccessCode(activity.accessCode)}
+   587→                  aria-label="Copy access code"
+   588→                >
+   589→                  <Copy className="h-3.5 w-3.5" />
+   590→                </Button>
+   591→              </div>
+   592→            )}
+   593→            <Button
+   594→              variant="secondary"
+   595→              size="sm"
+   596→              disabled={activity.status === 'DRAFT'}
+   597→              onClick={() => navigate('admin-present', { activityId: activity.id })}
+   598→            >
+   599→              <Presentation className="h-4 w-4" /> Present
+   600→            </Button>
+   601→          </div>
+   602→        </div>
+   603→        {/* Mobile actions */}
+   604→        <div className="flex items-center gap-2 border-t border-border/40 px-4 py-2 sm:hidden">
+   605→          {activity.status === 'DRAFT' ? (
+   606→            <Button
+   607→              onClick={() => setPublishOpen(true)}
+   608→              disabled={questionCount === 0 || publishing}
+   609→              size="sm"
+   610→              className="flex-1"
+   611→            >
+   612→              <Sparkles className="h-4 w-4" /> Publish
+   613→            </Button>
+   614→          ) : (
+   615→            <Button
+   616→              variant="outline"
+   617→              size="sm"
+   618→              className="flex-1"
+   619→              onClick={() => activity.accessCode && copyAccessCode(activity.accessCode)}
+   620→            >
+   621→              <span className="font-mono font-bold tracking-widest">{activity.accessCode}</span>
+   622→              <Copy className="h-3.5 w-3.5" />
+   623→            </Button>
+   624→          )}
+   625→          <Button
+   626→            variant="secondary"
+   627→            size="sm"
+   628→            disabled={activity.status === 'DRAFT'}
+   629→            onClick={() => navigate('admin-present', { activityId: activity.id })}
+   630→          >
+   631→            <Presentation className="h-4 w-4" />
+   632→          </Button>
+   633→        </div>
+   634→      </header>
+   635→
+   636→      <main className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">
+   637→        <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
+   638→          {/* Question list */}
+   639→          <aside className="lg:sticky lg:top-28 lg:self-start">
+   640→            <div className="mb-2 flex items-center justify-between">
+   641→              <h2 className="text-sm font-semibold text-muted-foreground">
+   642→                Questions ({questionCount})
+   643→              </h2>
+   644→            </div>
+   645→            <ScrollArea className="h-[calc(100vh-14rem)]">
+   646→              <div className="pr-3">
+   647→              <DndContext
+   648→                sensors={sensors}
+   649→                collisionDetection={closestCenter}
+   650→                onDragEnd={handleDragEnd}
+   651→              >
+   652→                <SortableContext
+   653→                  items={(activity.questions ?? []).map((q) => q.id)}
+   654→                  strategy={verticalListSortingStrategy}
+   655→                >
+   656→                  <div className="space-y-2">
+   657→                    {(activity.questions ?? []).map((q, i) => (
+   658→                      <SortableQuestionCard
+   659→                        key={q.id}
+   660→                        question={q}
+   661→                        order={i + 1}
+   662→                        isSelected={q.id === selectedId}
+   663→                        isLiveCurrent={activity.status === 'LIVE' && activity.currentQuestionId === q.id}
+   664→                        onSelect={() => setSelectedId(q.id)}
+   665→                        onDelete={() => setDeletingQuestion(q)}
+   666→                      />
+   667→                    ))}
+   668→                    {questionCount === 0 && (
+   669→                      <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+   670→                        No questions yet. Add your first one!
+   671→                      </p>
+   672→                    )}
+   673→                  </div>
+   674→                </SortableContext>
+   675→              </DndContext>
+   676→              <Button
+   677→                onClick={handleAddQuestion}
+   678→                variant="outline"
+   679→                className="mt-3 w-full border-dashed"
+   680→              >
+   681→                <Plus className="h-4 w-4" /> Add question
+   682→              </Button>
+   683→              </div>
+   684→            </ScrollArea>
+   685→          </aside>
+   686→
+   687→          {/* Editor */}
+   688→          <section>
+   689→            <AnimatePresence mode="wait">
+   690→              {selectedQuestion && form ? (
+   691→                <motion.div
+   692→                  key={selectedQuestion.id}
+   693→                  initial={{ opacity: 0, y: 10 }}
+   694→                  animate={{ opacity: 1, y: 0 }}
+   695→                  exit={{ opacity: 0, y: -10 }}
+   696→                  transition={{ duration: 0.2 }}
+   697→                >
+   698→                  <Card>
+   699→                    <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
+   700→                      <div>
+   701→                        <CardTitle className="flex items-center gap-2">
+   702→                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 text-sm font-bold text-primary">
+   703→                            {selectedQuestion.questionOrder}
+   704→                          </span>
+   705→                          Edit question
+   706→                        </CardTitle>
+   707→                        <CardDescription>
+   708→                          {isLiveQuestion
+   709→                            ? 'This question is currently live — end it on the presentation screen before editing.'
+   710→                            : 'Keep it clear and concise. Tap a letter badge to mark the correct answer.'}
+   711→                        </CardDescription>
+   712→                      </div>
+   713→                      {isLiveQuestion ? (
+   714→                        <Badge
+   715→                          variant="outline"
+   716→                          className="border-rose-500/40 text-rose-600 dark:text-rose-400"
+   717→                        >
+   718→                          <Radio className="mr-1 h-3 w-3" /> Live
+   719→                        </Badge>
+   720→                      ) : dirty ? (
+   721→                        <Badge
+   722→                          variant="outline"
+   723→                          className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+   724→                        >
+   725→                          Unsaved changes
+   726→                        </Badge>
+   727→                      ) : null}
+   728→                    </CardHeader>
+   729→                    <CardContent className="space-y-6">
+   730→                      <div className="space-y-2">
+   731→                        <Label htmlFor="questionText">Question</Label>
+   732→                        <Textarea
+   733→                          id="questionText"
+   734→                          value={form.questionText}
+   735→                          onChange={(e) => updateField('questionText', e.target.value)}
+   736→                          placeholder="Type your question…"
+   737→                          rows={3}
+   738→                          disabled={isLiveQuestion}
+   739→                        />
+   740→                      </div>
+   741→
+   742→                      <div className="space-y-3">
+   743→                        <Label>Options</Label>
+   744→                        <div className="space-y-2">
+   745→                          {OPTION_KEYS.map((key) => {
+   746→                            const field = `option${key}` as
+   747→                              | 'optionA'
+   748→                              | 'optionB'
+   749→                              | 'optionC'
+   750→                              | 'optionD'
+   751→                            const isCorrect = form.correctOption === key
+   752→                            return (
+   753→                              <div
+   754→                                key={key}
+   755→                                className={`flex items-center gap-2 rounded-xl border-2 px-2 py-1.5 transition-colors ${
+   756→                                  isCorrect
+   757→                                    ? 'border-emerald-500/60 bg-emerald-500/5'
+   758→                                    : 'border-border bg-card'
+   759→                                }`}
+   760→                              >
+   761→                                <button
+   762→                                  type="button"
+   763→                                  onClick={() => updateField('correctOption', key)}
+   764→                                  disabled={isLiveQuestion}
+   765→                                  aria-label={`Mark option ${key} as correct`}
+   766→                                  aria-pressed={isCorrect}
+   767→                                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-colors ${
+   768→                                    isCorrect
+   769→                                      ? 'bg-emerald-500 text-white'
+   770→                                      : 'bg-muted text-muted-foreground hover:bg-primary/15 hover:text-primary'
+   771→                                  }`}
+   772→                                >
+   773→                                  {isCorrect ? <Check className="h-4 w-4" /> : key}
+   774→                                </button>
+   775→                                <Input
+   776→                                  value={form[field]}
+   777→                                  onChange={(e) => updateField(field, e.target.value)}
+   778→                                  placeholder={`Option ${key}`}
+   779→                                  disabled={isLiveQuestion}
+   780→                                  className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
+   781→                                />
+   782→                              </div>
+   783→                            )
+   784→                          })}
+   785→                        </div>
+   786→                        <p className="text-xs text-muted-foreground">
+   787→                          Correct answer:{' '}
+   788→                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+   789→                            {form.correctOption}
+   790→                          </span>
+   791→                        </p>
+   792→                      </div>
+   793→
+   794→                      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+   795→                        <div className="space-y-2">
+   796→                          <Label htmlFor="timeLimit">Time limit</Label>
+   797→                          <Select
+   798→                            value={String(form.timeLimit)}
+   799→                            onValueChange={(v) => updateField('timeLimit', Number(v))}
+   800→                            disabled={isLiveQuestion}
+   801→                          >
+   802→                            <SelectTrigger id="timeLimit" className="w-40">
+   803→                              <SelectValue />
+   804→                            </SelectTrigger>
+   805→                            <SelectContent>
+   806→                              {TIME_LIMITS.map((t) => (
+   807→                                <SelectItem key={t} value={String(t)}>
+   808→                                  {t} seconds
+   809→                                </SelectItem>
+   810→                              ))}
+   811→                            </SelectContent>
+   812→                          </Select>
+   813→                        </div>
+   814→
+   815→                        <div className="flex items-center gap-2">
+   816→                          {!isLiveQuestion && (
+   817→                            <Button
+   818→                              variant="ghost"
+   819→                              onClick={() => setDeletingQuestion(selectedQuestion)}
+   820→                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+   821→                            >
+   822→                              <Trash2 className="h-4 w-4" /> Delete
+   823→                            </Button>
+   824→                          )}
+   825→                          <Button
+   826→                            onClick={handleSaveQuestion}
+   827→                            disabled={isLiveQuestion || formInvalid || saving || !dirty}
+   828→                          >
+   829→                            {saving ? (
+   830→                              <Loader2 className="h-4 w-4 animate-spin" />
+   831→                            ) : (
+   832→                              <Save className="h-4 w-4" />
+   833→                            )}
+   834→                            Save
+   835→                          </Button>
+   836→                        </div>
+   837→                      </div>
+   838→                    </CardContent>
+   839→                  </Card>
+   840→                </motion.div>
+   841→              ) : (
+   842→                <motion.div
+   843→                  key="empty"
+   844→                  initial={{ opacity: 0 }}
+   845→                  animate={{ opacity: 1 }}
+   846→                  exit={{ opacity: 0 }}
+   847→                  className="flex h-64 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/60 bg-card/40 text-center"
+   848→                >
+   849→                  <Sparkles className="h-10 w-10 text-muted-foreground/60" />
+   850→                  <p className="mt-3 text-sm text-muted-foreground">
+   851→                    Select a question on the left to edit, or add a new one.
+   852→                  </p>
+   853→                  <Button onClick={handleAddQuestion} variant="outline" className="mt-4">
+   854→                    <Plus className="h-4 w-4" /> Add first question
+   855→                  </Button>
+   856→                </motion.div>
+   857→              )}
+   858→            </AnimatePresence>
+   859→          </section>
+   860→        </div>
+   861→      </main>
+   862→
+   863→      {/* Publish dialog */}
+   864→      <Dialog
+   865→        open={publishOpen}
+   866→        onOpenChange={(o) => {
+   867→          setPublishOpen(o)
+   868→          if (!o) setPublishResult(null)
+   869→        }}
+   870→      >
+   871→        <DialogContent>
+   872→          {publishResult ? (
+   873→            <>
+   874→              <DialogHeader>
+   875→                <DialogTitle>Activity published!</DialogTitle>
+   876→                <DialogDescription>
+   877→                  Share this access code with your participants. They can join from the participant entrance.
+   878→                </DialogDescription>
+   879→              </DialogHeader>
+   880→              <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-6 text-center">
+   881→                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+   882→                  Access code
+   883→                </p>
+   884→                <p className="mt-2 font-mono text-5xl font-bold tracking-[0.3em] text-primary">
+   885→                  {publishResult.accessCode}
+   886→                </p>
+   887→                <Button
+   888→                  variant="outline"
+   889→                  size="sm"
+   890→                  className="mt-3"
+   891→                  onClick={() =>
+   892→                    publishResult.accessCode && copyAccessCode(publishResult.accessCode)
+   893→                  }
+   894→                >
+   895→                  <Copy className="h-3.5 w-3.5" /> Copy code
+   896→                </Button>
+   897→              </div>
+   898→              <DialogFooter className="gap-2">
+   899→                <Button variant="ghost" onClick={() => setPublishOpen(false)}>
+   900→                  Stay in editor
+   901→                </Button>
+   902→                <Button
+   903→                  onClick={() => navigate('admin-present', { activityId: publishResult.id })}
+   904→                >
+   905→                  <Presentation className="h-4 w-4" /> Present now
+   906→                </Button>
+   907→              </DialogFooter>
+   908→            </>
+   909→          ) : (
+   910→            <>
+   911→              <DialogHeader>
+   912→                <DialogTitle>Publish activity?</DialogTitle>
+   913→                <DialogDescription>
+   914→                  This will generate a 6-digit access code so participants can join. You can still
+   915→                  edit the title, questions, and options after publishing.
+   916→                </DialogDescription>
+   917→              </DialogHeader>
+   918→              <div className="rounded-xl bg-muted/40 p-3 text-sm">
+   919→                <div className="flex items-center justify-between">
+   920→                  <span className="text-muted-foreground">Title</span>
+   921→                  <span className="truncate pl-2 text-right font-medium">{activity.title}</span>
+   922→                </div>
+   923→                <Separator className="my-2" />
+   924→                <div className="flex items-center justify-between">
+   925→                  <span className="text-muted-foreground">Questions</span>
+   926→                  <span className="font-medium">{questionCount}</span>
+   927→                </div>
+   928→                <Separator className="my-2" />
+   929→                <div className="flex items-center justify-between">
+   930→                  <span className="text-muted-foreground">Max participants</span>
+   931→                  <span className="font-medium">{MAX_PARTICIPANTS_DISPLAY}</span>
+   932→                </div>
+   933→              </div>
+   934→              <DialogFooter className="gap-2">
+   935→                <Button variant="ghost" onClick={() => setPublishOpen(false)} disabled={publishing}>
+   936→                  Cancel
+   937→                </Button>
+   938→                <Button onClick={handlePublish} disabled={publishing}>
+   939→                  {publishing ? (
+   940→                    <Loader2 className="h-4 w-4 animate-spin" />
+   941→                  ) : (
+   942→                    <Sparkles className="h-4 w-4" />
+   943→                  )}
+   944→                  Publish now
+   945→                </Button>
+   946→              </DialogFooter>
+   947→            </>
+   948→          )}
+   949→        </DialogContent>
+   950→      </Dialog>
+   951→
+   952→      {/* Delete question confirm */}
+   953→      <AlertDialog
+   954→        open={!!deletingQuestion}
+   955→        onOpenChange={(o) => !o && setDeletingQuestion(null)}
+   956→      >
+   957→        <AlertDialogContent>
+   958→          <AlertDialogHeader>
+   959→            <AlertDialogTitle>
+   960→              Delete question {deletingQuestion?.questionOrder}?
+   961→            </AlertDialogTitle>
+   962→            <AlertDialogDescription>
+   963→              This cannot be undone. Remaining questions will be renumbered automatically.
+   964→            </AlertDialogDescription>
+   965→          </AlertDialogHeader>
+   966→          <AlertDialogFooter>
+   967→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   968→            <AlertDialogAction
+   969→              onClick={handleDeleteQuestion}
+   970→              className="bg-destructive text-white hover:bg-destructive/90"
+   971→            >
+   972→              Delete
+   973→            </AlertDialogAction>
+   974→          </AlertDialogFooter>
+   975→        </AlertDialogContent>
+   976→      </AlertDialog>
+   977→    </Shell>
+   978→  )
+   979→}
+   980→
+   981→function Shell({ children }: { children: React.ReactNode }) {
+   982→  return (
+   983→    <div className="flex min-h-screen flex-col bg-background">
+   984→      {children}
+   985→      <AppFooter />
+   986→    </div>
+   987→  )
+   988→}
+   989→
