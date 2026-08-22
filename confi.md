@@ -1,1 +1,1 @@
-text config
+test config
