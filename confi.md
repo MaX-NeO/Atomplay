@@ -1,1 +1,1 @@
-test config 5 UI patch
+test config 6 server patch
