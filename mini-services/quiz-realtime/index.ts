@@ -1,17 +1,34 @@
 // quiz-realtime — Socket.io mini-service for live quiz sessions.
 //
-// Port: 3003 (hardcoded, per system rules).
-// Path: '/'   (REQUIRED by Caddy gateway).
-// State: all state lives in the shared SQLite DB (via Prisma). No Redis.
+// Port: read from process.env.PORT (Render sets this), defaults to 3003.
+// Path: '/socket.io/' (the socket.io default — leaves '/health' free for checks)
+// State: all state lives in the shared Neon DB (via Prisma). No Redis.
 //
-// The browser connects via `io("/?XTransformPort=3003")` — same-origin from
-// the browser's POV (Caddy handles routing).
-//
-// See /home/z/my-project/worklog.md for the full socket event contract.
+// The browser connects via `io(realtimeUrl)` in production, or
+// `io("/?XTransformPort=3003")` in the sandbox.
 
 import { createServer } from 'http'
 import { Server, Socket } from 'socket.io'
+
+// ---------------------------------------------------------------------------
+// Config + startup logging
+// ---------------------------------------------------------------------------
+
+const PORT = parseInt(process.env.PORT || '3003', 10)
+const CORS_ORIGIN = process.env.CORS_ORIGIN || '*'
+
+// Log startup info for debugging (visible in Render logs)
+console.log('[startup] quiz-realtime booting...')
+console.log(`[startup] PORT=${PORT}`)
+console.log(`[startup] CORS_ORIGIN=${CORS_ORIGIN}`)
+console.log(`[startup] DATABASE_URL set=${!!process.env.DATABASE_URL}`)
+console.log(`[startup] DATABASE_URL_UNPOOLED set=${!!process.env.DATABASE_URL_UNPOOLED}`)
+
+// Load Prisma — if this fails, the service CANNOT run. Log a clear error
+// and exit so Render restarts it and the error is visible in the logs.
 import { db } from './prisma'
+console.log('[startup] Prisma client loaded OK')
+
 import type {
   AnswerDistribution,
   OptionKey,
@@ -28,29 +45,40 @@ import type {
 } from './types'
 
 // ---------------------------------------------------------------------------
-// Config
+// HTTP server + socket.io
 // ---------------------------------------------------------------------------
 
-const PORT = parseInt(process.env.PORT || '3003', 10)
-
-// Create the HTTP server with a health check handler BEFORE socket.io attaches.
-// Socket.io intercepts requests on its path ('/'), so the health check must
-// be registered first and short-circuit before socket.io sees it.
 const httpServer = createServer((req, res) => {
+  // Health check — used by Render for health monitoring
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }))
+    res.end(JSON.stringify({
+      status: 'ok',
+      uptime: process.uptime(),
+      db: 'connected',
+    }))
     return
   }
-  // All other requests fall through to socket.io (attached below).
+
+  // Root route — simple info page for manual testing
+  if (req.url === '/' || req.url === '/index.html') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      service: 'atomplay-quiz-realtime',
+      status: 'running',
+      socketio: '/socket.io/',
+      health: '/health',
+      uptime: process.uptime(),
+    }))
+    return
+  }
+
+  // All other requests (including /socket.io/*) fall through to socket.io.
 })
 
 const io = new Server(httpServer, {
-  // Use the default path '/socket.io/' so /health is not intercepted.
-  // The sandbox Caddy gateway forwards ALL paths to the service, so the
-  // default path works in both sandbox and production.
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: CORS_ORIGIN,
     methods: ['GET', 'POST'],
   },
 })
@@ -866,9 +894,10 @@ setInterval(async () => {
 // ---------------------------------------------------------------------------
 
 httpServer.listen(PORT, () => {
-  console.log(
-    `[server] quiz-realtime listening on http://0.0.0.0:${PORT} (path=/)`,
-  )
+  console.log(`[server] quiz-realtime listening on http://0.0.0.0:${PORT}`)
+  console.log(`[server] socket.io path: /socket.io/`)
+  console.log(`[server] CORS origin: ${CORS_ORIGIN}`)
+  console.log(`[server] Health check: http://0.0.0.0:${PORT}/health`)
 })
 
 // Graceful shutdown — close the Prisma client so bun --hot restarts cleanly.
