@@ -9,9 +9,7 @@ const nextConfig: NextConfig = {
   // Allow the sandbox preview host (preview-<chat_id>.space-z.ai) to load
   // cross-origin dev resources (chunks, HMR) in development.
   allowedDevOrigins: [
-    ".space-z.ai",
-    "127.0.0.1",
-    "localhost",
+    "all"
   ],
 };
 
