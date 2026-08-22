@@ -55,6 +55,7 @@ export function ParticipantJoinScreen() {
         displayName: displayName.trim(),
       })
       setParticipant({
+        participantId: res.participantId,
         sessionId: res.sessionId,
         activityId: res.activityId,
         title: res.title,

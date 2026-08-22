@@ -203,3 +203,48 @@ export function getParticipantIcon(index: number): ParticipantIcon {
   if (!Number.isFinite(index) || index < 0) return User
   return PARTICIPANT_ICONS[index % PARTICIPANT_ICONS.length]
 }
+
+/**
+ * Derive a STABLE index from a participant's ID.
+ *
+ * The lobby bubble stage assigns icons by join-order index (0, 1, 2, …), but
+ * the leaderboard re-sorts participants by score — so the leaderboard's array
+ * index does NOT match the join order. If we used the array index, a participant
+ * would get a DIFFERENT icon/color on the leaderboard than in the lobby.
+ *
+ * This function hashes the participant ID to produce a stable number in
+ * [0, 99]. The same participant always gets the same icon + color, regardless
+ * of whether they're shown in the lobby, leaderboard, or final results.
+ *
+ * Note: this does NOT guarantee uniqueness across participants (two IDs could
+ * hash to the same slot), but collisions are rare and the visual impact is
+ * minimal. For the lobby (where uniqueness matters), the join-order index is
+ * still used.
+ */
+export function stableParticipantIndex(participantId: string): number {
+  let hash = 0
+  for (let i = 0; i < participantId.length; i++) {
+    hash = (hash * 31 + participantId.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % PARTICIPANT_ICONS.length
+}
+
+/**
+ * Get the icon for a participant by their ID (stable across contexts).
+ * Use this in the leaderboard / final results where join order is unknown.
+ */
+export function getParticipantIconById(participantId: string): ParticipantIcon {
+  return getParticipantIcon(stableParticipantIndex(participantId))
+}
+
+/**
+ * Get the color for a participant by their ID (stable across contexts).
+ * Uses the same hash as stableParticipantIndex so icon + color always match.
+ */
+export function colorForParticipantById(
+  participantId: string,
+  displayName: string,
+): ParticipantColor {
+  const idx = stableParticipantIndex(participantId)
+  return colorForParticipant(displayName, idx)
+}

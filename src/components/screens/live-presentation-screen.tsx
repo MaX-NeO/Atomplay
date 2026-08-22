@@ -8,7 +8,7 @@ import { useCountdown, formatTime } from '@/hooks/use-countdown'
 import { ResultBars } from '@/components/shared/result-bars'
 import { LeaderboardChart } from '@/components/shared/leaderboard-chart'
 import { ParticipantsSheet, type ParticipantRow } from '@/components/shared/participants-sheet'
-import { colorForParticipant, getParticipantIcon } from '@/lib/participant-icons'
+import { colorForParticipantById, getParticipantIconById } from '@/lib/participant-icons'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -825,11 +825,10 @@ export function LivePresentationScreen() {
                 >
                   {participants.map((p, i) => {
                     const { x, y } = phyllotaxisPosition(i)
-                    const color = colorForParticipant(p.displayName, i)
-                    // Each participant gets a unique Lucide icon (stable lucide-react
-                    // icons + experimental @lucide/lab icons). Index N -> icon #N,
-                    // so the first 100 joiners each get a distinct icon.
-                    const Icon = getParticipantIcon(i)
+                    // Use STABLE ID-based icon + color so the bubble matches
+                    // the leaderboard + the participant's own lobby view.
+                    const color = colorForParticipantById(p.id, p.displayName)
+                    const Icon = getParticipantIconById(p.id)
                     const isFirst = i === 0
                     const diameter = isFirst
                       ? CENTER_BUBBLE_DIAMETER

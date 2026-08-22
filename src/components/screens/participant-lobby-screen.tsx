@@ -7,7 +7,8 @@ import { getSocket } from '@/lib/socket'
 import { AppFooter } from '@/components/shared/app-footer'
 import { Card, CardContent } from '@/components/ui/card'
 import { motion } from 'framer-motion'
-import { Radio, Users } from 'lucide-react'
+import { Users } from 'lucide-react'
+import { getParticipantIconById, colorForParticipantById, stableParticipantIndex, PARTICIPANT_ICONS } from '@/lib/participant-icons'
 import type {
   ActivityStateResponse,
   LeaderboardShownPayload,
@@ -140,6 +141,13 @@ export function ParticipantLobbyScreen() {
 
   if (!participant) return null
 
+  // Derive the participant's stable icon + color from their DB ID.
+  // This MUST match the ID used by admin views (lobby bubble, participants
+  // sheet, leaderboard) — all use the DB participant ID.
+  const assignedColor = colorForParticipantById(participant.participantId, participant.displayName)
+  const iconIndex = stableParticipantIndex(participant.participantId)
+  const AssignedIcon = PARTICIPANT_ICONS[iconIndex]
+
   return (
     <div className="relative flex min-h-screen flex-col bg-stage-activity text-white">
       <main className="flex flex-1 items-center justify-center px-4 py-8">
@@ -149,9 +157,24 @@ export function ParticipantLobbyScreen() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
           >
-            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center bg-primary/15 text-primary">
-              <Radio className="h-8 w-8" />
-            </div>
+            {/* User's assigned icon — matches the lobby bubble + leaderboard */}
+            <motion.div
+              initial={{ scale: 0, rotate: -20 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 14, delay: 0.1 }}
+              className="mx-auto mb-6 flex h-20 w-20 items-center justify-center border-2"
+              style={{
+                borderColor: assignedColor.border,
+                background: assignedColor.soft,
+                boxShadow: `0 0 28px -4px ${assignedColor.glow}`,
+              }}
+            >
+              <AssignedIcon
+                className="h-10 w-10"
+                style={{ color: assignedColor.text }}
+                strokeWidth={2}
+              />
+            </motion.div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
               You&apos;re in!
             </p>

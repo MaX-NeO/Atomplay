@@ -16,7 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { LogOut, Search, UserCog, Users } from 'lucide-react'
-import { colorForParticipant, getParticipantIcon } from '@/lib/participant-icons'
+import { colorForParticipantById, getParticipantIconById } from '@/lib/participant-icons'
 
 // A joined participant rendered as a row card in the sheet (and as a floating
 // bubble on the lobby stage). This shape is shared between the host lobby
@@ -211,16 +211,10 @@ export function ParticipantsSheet({
               </div>
             ) : (
               filtered.map((p) => {
-                // Look up the participant's index in the FULL (unfiltered)
-                // list so the icon + color assignment matches the lobby bubble
-                // stage — searching/filtering must not change a participant's
-                // icon or color. Both views call colorForParticipant(displayName,
-                // index) with the same pair, so the avatar color here is
-                // identical to that participant's lobby bubble color.
-                const iconIndex = participants.findIndex((x) => x.id === p.id)
-                const safeIndex = iconIndex >= 0 ? iconIndex : 0
-                const Icon = getParticipantIcon(safeIndex)
-                const color = colorForParticipant(p.displayName, safeIndex)
+                // Use STABLE ID-based icon + color so the sheet matches the
+                // lobby bubble stage + leaderboard exactly.
+                const Icon = getParticipantIconById(p.id)
+                const color = colorForParticipantById(p.id, p.displayName)
                 return (
                   <div
                     key={p.id}

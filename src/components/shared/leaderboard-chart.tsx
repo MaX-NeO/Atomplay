@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { Crown, Medal, Award } from 'lucide-react'
 import type { LeaderboardEntry } from '@/lib/types'
-import { colorForParticipant, getParticipantIcon } from '@/lib/participant-icons'
+import { colorForParticipantById, getParticipantIconById } from '@/lib/participant-icons'
 
 interface LeaderboardChartProps {
   entries: LeaderboardEntry[]
@@ -36,8 +36,11 @@ export function LeaderboardChart({ entries, previousEntries, showScoreBreakdown 
         {sorted.map((entry, index) => {
           const rank = index + 1
           const pct = (entry.totalScore / maxScore) * 100
-          const color = colorForParticipant(entry.displayName, index)
-          const Icon = getParticipantIcon(index)
+          // Use STABLE ID-based icon + color (not the leaderboard index).
+          // This ensures each participant gets the SAME icon/color as in the
+          // lobby bubble stage, regardless of their leaderboard rank.
+          const color = colorForParticipantById(entry.participantId, entry.displayName)
+          const Icon = getParticipantIconById(entry.participantId)
           const RankIcon = rank <= 3 ? RANK_ICONS[rank - 1] : null
           const rankColor = rank <= 3 ? RANK_COLORS[rank - 1] : 'text-muted-foreground'
 

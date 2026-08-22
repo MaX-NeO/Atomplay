@@ -126,6 +126,7 @@ export interface ParticipantKickedPayload {
 
 // ---- REST responses ----
 export interface JoinResponse {
+  participantId: string  // DB primary key — used for stable icon/color assignment
   sessionId: string
   activityId: string
   title: string

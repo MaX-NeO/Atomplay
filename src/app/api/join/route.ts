@@ -98,6 +98,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json(
     {
+      participantId: participant.id,
       sessionId: participant.sessionId,
       activityId: activity.id,
       title: activity.title,

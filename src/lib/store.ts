@@ -23,6 +23,7 @@ export type Screen =
   | 'participant-completed'
 
 export interface ParticipantSession {
+  participantId: string  // DB primary key — used for stable icon/color assignment
   sessionId: string
   activityId: string
   title: string

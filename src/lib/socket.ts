@@ -7,35 +7,37 @@ let socket: Socket | null = null
 /**
  * Connect to the realtime socket service.
  *
- * In PRODUCTION: connects to the Render mini-service URL (NEXT_PUBLIC_REALTIME_URL).
- * In DEVELOPMENT (sandbox): connects via the Caddy gateway using ?XTransformPort=3003.
+ * Connection strategy (checked in order):
+ *   1. If NEXT_PUBLIC_REALTIME_URL is set → connect directly to that URL (production)
+ *   2. Otherwise → use the sandbox Caddy gateway pattern (?XTransformPort=3003)
+ *
+ * NOTE: NEXT_PUBLIC_* env vars are inlined at BUILD TIME by Next.js. If you
+ * add/change NEXT_PUBLIC_REALTIME_URL on Vercel, you MUST redeploy for the
+ * change to take effect.
  */
 export function getSocket(): Socket {
   if (!socket) {
-    const isProduction = process.env.NODE_ENV === 'production'
     const realtimeUrl = process.env.NEXT_PUBLIC_REALTIME_URL
 
-    if (isProduction && realtimeUrl) {
-      // Production: connect directly to the Render mini-service
-      socket = io(realtimeUrl, {
-        transports: ['polling', 'websocket'],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 800,
-        reconnectionDelayMax: 5000,
-        timeout: 10000,
-      })
-    } else {
-      // Development: sandbox Caddy gateway pattern
-      socket = io('/?XTransformPort=3003', {
-        transports: ['polling', 'websocket'],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 800,
-        reconnectionDelayMax: 5000,
-        timeout: 10000,
-      })
+    // Debug: log which mode we're in (visible in browser console)
+    if (typeof window !== 'undefined') {
+      if (realtimeUrl) {
+        console.log('[socket] production mode →', realtimeUrl)
+      } else {
+        console.warn('[socket] NEXT_PUBLIC_REALTIME_URL not set — using sandbox mode (?XTransformPort=3003). Set NEXT_PUBLIC_REALTIME_URL on Vercel and redeploy.')
+      }
     }
+
+    const target = realtimeUrl || '/?XTransformPort=3003'
+
+    socket = io(target, {
+      transports: ['polling', 'websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 800,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
+    })
 
     if (typeof window !== 'undefined') {
       socket.on('connect', () => {
