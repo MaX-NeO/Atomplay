@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   keywords: ["quiz", "live", "real-time", "MCQ", "presentation", "audience"],
   authors: [{ name: "Atom Play" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/favicon.ico",
   },
 };
 
