@@ -1,6 +1,9 @@
 # Render Blueprint for Atom Play quiz-realtime service
 # Docs: https://render.com/docs/blueprint-spec
 # Deploy via: render blueprint deploy (or connect repo in dashboard)
+#
+# This uses the NATIVE Node runtime (not Docker). For Docker deployment,
+# see deployment-docs/02-render-mini-service.md.
 
 services:
   - type: web
@@ -10,7 +13,7 @@ services:
     region: singapore  # choose nearest to your Neon DB region
     branch: main
     rootDir: mini-services/quiz-realtime
-    buildCommand: npm install && npx prisma generate --schema=../../prisma/schema.prisma
+    buildCommand: npm install && npx prisma generate --schema=./prisma/schema.prisma
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true

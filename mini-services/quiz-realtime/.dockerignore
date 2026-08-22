@@ -1,0 +1,7 @@
+node_modules
+bun.lock
+*.log
+.env*
+.git
+.gitignore
+README.md

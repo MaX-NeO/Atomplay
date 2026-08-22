@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "bun --hot index.ts",
     "start": "bun index.ts",
-    "build": "prisma generate --schema=../../prisma/schema.prisma",
+    "build": "prisma generate --schema=./prisma/schema.prisma",
+    "sync-schema": "bash sync-schema.sh",
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
-    "@prisma/client": "^6.11.1",
+    "@prisma/client": "^6.19.3",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

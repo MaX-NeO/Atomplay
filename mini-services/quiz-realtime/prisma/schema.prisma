@@ -1,0 +1,176 @@
+// Prisma schema for the Real-Time Quiz Activity Platform
+// Optimized for Neon PostgreSQL
+//
+// Key optimizations over the SQLite schema:
+//   1. Native PostgreSQL enums (ActivityStatus, OptionKey, AdminRole)
+//      → DB-level constraint enforcement, no invalid states
+//   2. UUID primary keys (@default(uuid()))
+//      → globally unique, better for distributed inserts
+//   3. Composite indexes tuned for common query patterns
+//   4. Neon pooler for serverless, direct for migrations
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")           // pooled — used at runtime
+  directUrl = env("DATABASE_URL_UNPOOLED")  // un-pooled — used for migrations
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum AdminRole {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ActivityStatus {
+  DRAFT
+  PUBLISHED
+  LIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum OptionKey {
+  A
+  B
+  C
+  D
+}
+
+// ─── Models ─────────────────────────────────────────────────────────────────
+
+model Admin {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         AdminRole  @default(ADMIN)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  activities Activity[] @relation("AdminActivities")
+
+  @@map("admins")
+}
+
+model Activity {
+  id                String         @id @default(uuid())
+  title             String
+  description       String         @default("")
+  status            ActivityStatus @default(DRAFT)
+  accessCode        String?        @unique // 6-digit code, set on publish
+  currentQuestionId String?        // currently active question id (when LIVE)
+  currentLeaderboardId String?     // currently shown leaderboard id (when LIVE, leaderboard phase)
+  questionStartedAt DateTime?      // server-side timestamp when current question started
+  questionEndsAt    DateTime?      // server-side timestamp when current question must end
+  createdBy         String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  startedAt         DateTime?
+  endedAt           DateTime?
+
+  admin       Admin        @relation("AdminActivities", fields: [createdBy], references: [id], onDelete: Cascade)
+  questions   Question[]
+  participants Participant[]
+  answers     Answer[]
+  leaderboardSections LeaderboardSection[]
+
+  @@index([accessCode])                         // lookup by access code (join flow)
+  @@index([status])                             // filter by status (dashboard tabs, auto-expire ticker)
+  @@index([status, currentQuestionId])          // auto-expire ticker: WHERE status='LIVE' AND currentQuestionId IS NOT NULL AND questionEndsAt < now()
+  @@index([createdBy, createdAt])               // admin dashboard: list activities sorted by time
+  @@map("activities")
+}
+
+model Question {
+  id            String    @id @default(uuid())
+  activityId    String
+  questionOrder Int
+  questionText  String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctOption OptionKey
+  timeLimit     Int       @default(30) // seconds
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  answers  Answer[]
+
+  @@unique([activityId, questionOrder])          // enforce ordering within an activity
+  @@index([activityId])                          // activity detail: load all questions
+  @@map("questions")
+}
+
+model Participant {
+  id          String   @id @default(uuid())
+  activityId  String
+  sessionId   String   @unique // client-side session id (for reconnect)
+  uoid        String?  // player's unique org ID (roll number / employee id), unique per activity
+  displayName String
+  joinedAt    DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  answers  Answer[]
+
+  @@unique([activityId, uoid]) // no duplicate UOID within the same activity (NULLs allowed)
+  @@index([activityId])        // count participants per activity
+  @@map("participants")
+}
+
+model Answer {
+  id             String    @id @default(uuid())
+  activityId     String
+  questionId     String
+  participantId  String
+  selectedOption OptionKey
+  isCorrect      Boolean
+  score          Int       @default(0) // 1000 base for correct + time bonus; 0 for incorrect
+  timeTakenMs    Int?      // how long the participant took to answer (ms from question start)
+  answeredAt     DateTime  @default(now())
+
+  activity    Activity    @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, questionId]) // anti-duplicate answer (PRD §28)
+  @@index([questionId])                // compute distribution per question
+  @@index([activityId, participantId])  // compute per-participant score for final results
+  @@map("answers")
+}
+
+// ─── Leaderboard Section ───────────────────────────────────────────────────
+// Represents a leaderboard break in the activity sequence. Interleaved with
+// questions: each leaderboard (except the default final one) is positioned
+// AFTER a specific question (identified by its questionOrder).
+//
+// `afterQuestionOrder`:
+//   - null  → the DEFAULT final leaderboard (always last, one per activity,
+//             cannot be edited/deleted/moved)
+//   - Int N → appears after the question with questionOrder == N
+//
+// The unique constraint on (activityId, afterQuestionOrder) prevents two
+// leaderboards from occupying the same position — i.e. no two leaderboards
+// can be adjacent (each is tied to a distinct question).
+model LeaderboardSection {
+  id                String   @id @default(uuid())
+  activityId        String
+  afterQuestionOrder Int?    // null = default final; N = after question with questionOrder N
+  isDefault         Boolean  @default(false)
+  title             String?  // optional custom title (null → "Leaderboard")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, afterQuestionOrder]) // one leaderboard per position
+  @@index([activityId])
+  @@map("leaderboard_sections")
+}
