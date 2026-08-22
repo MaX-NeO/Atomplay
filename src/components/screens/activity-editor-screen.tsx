@@ -47,9 +47,11 @@ import {
   Sparkles,
   Trash2,
   Trophy,
+  Upload,
   Users,
 } from 'lucide-react'
 import { MAX_PARTICIPANTS_DISPLAY } from '@/lib/participant-icons'
+import { ImportQuestionsDialog } from '@/components/shared/import-questions-dialog'
 import type {
   ActivityDTO,
   ActivityStatus,
@@ -353,6 +355,7 @@ export function ActivityEditorScreen() {
   const [publishing, setPublishing] = useState(false)
   const [publishResult, setPublishResult] = useState<ActivityDTO | null>(null)
   const [deletingQuestion, setDeletingQuestion] = useState<QuestionDTO | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const [savingTitle, setSavingTitle] = useState(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -845,10 +848,20 @@ export function ActivityEditorScreen() {
         <div className="grid gap-6 lg:grid-cols-[minmax(280px,340px)_1fr]">
           {/* Question + leaderboard list (merged, interleaved) */}
           <aside className="min-w-0 lg:sticky lg:top-28 lg:self-start">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-muted-foreground">
                 Questions ({questionCount})
               </h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImportOpen(true)}
+                className="h-7 gap-1.5 px-2 text-xs"
+                title="Import questions from JSON"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Import
+              </Button>
             </div>
             <div className="h-[calc(100vh-14rem)] overflow-y-auto scroll-thin pr-1">
               <DndContext
@@ -1208,6 +1221,24 @@ export function ActivityEditorScreen() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Import questions dialog */}
+      <ImportQuestionsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        activityId={activity.id}
+        onImported={(imported) => {
+          setActivity((prev) =>
+            prev
+              ? { ...prev, questions: [...(prev.questions ?? []), ...imported] }
+              : prev,
+          )
+          // Select the first imported question
+          if (imported.length > 0) {
+            setSelectedId(imported[0].id)
+          }
+        }}
+      />
     </Shell>
   )
 }
