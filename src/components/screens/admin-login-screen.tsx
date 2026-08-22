@@ -60,7 +60,7 @@ export function AdminLoginScreen() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-stage-app">
+    <div className="flex min-h-screen flex-col bg-stage-activity">
       {/* Minimal top bar */}
       <header className="sticky top-0 z-30 glass-bar backdrop-blur-md backdrop-saturate-150">
         <div className="flex h-16 w-full items-center justify-between px-4 sm:px-8 lg:px-12 xl:px-16">

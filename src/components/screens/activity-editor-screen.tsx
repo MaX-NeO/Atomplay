@@ -1245,7 +1245,7 @@ export function ActivityEditorScreen() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-stage-app">
+    <div className="flex min-h-screen flex-col bg-stage-stage">
       {children}
       <AppFooter />
     </div>

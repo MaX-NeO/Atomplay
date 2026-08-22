@@ -146,7 +146,7 @@ export function FinalResultsScreen() {
 
   if (booting) {
     return (
-      <div className="flex min-h-screen flex-col bg-stage-app">
+      <div className="flex min-h-screen flex-col bg-stage-stage">
         <main className="flex flex-1 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </main>
@@ -159,7 +159,7 @@ export function FinalResultsScreen() {
 
   if (notFound) {
     return (
-      <div className="flex min-h-screen flex-col bg-stage-app">
+      <div className="flex min-h-screen flex-col bg-stage-stage">
         <ResultsHeader
           admin={admin}
           onBack={() => navigate('admin-dashboard')}
@@ -185,7 +185,7 @@ export function FinalResultsScreen() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-stage-app">
+    <div className="flex min-h-screen flex-col bg-stage-stage">
       <ResultsHeader
         admin={admin}
         onBack={() => navigate('admin-dashboard')}
