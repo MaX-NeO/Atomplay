@@ -23,18 +23,36 @@ import type {
   ActivityCompletedPayload,
   ActivityResetPayload,
   ParticipantKickedPayload,
+  LeaderboardEntry,
+  LeaderboardShownPayload,
 } from './types'
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const PORT = 3003
+const PORT = parseInt(process.env.PORT || '3003', 10)
 
-const httpServer = createServer()
+// Create the HTTP server with a health check handler BEFORE socket.io attaches.
+// Socket.io intercepts requests on its path ('/'), so the health check must
+// be registered first and short-circuit before socket.io sees it.
+const httpServer = createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }))
+    return
+  }
+  // All other requests fall through to socket.io (attached below).
+})
+
 const io = new Server(httpServer, {
-  path: '/',
-  cors: { origin: '*' }, // Caddy handles routing; allow all origins.
+  // Use the default path '/socket.io/' so /health is not intercepted.
+  // The sandbox Caddy gateway forwards ALL paths to the service, so the
+  // default path works in both sandbox and production.
+  cors: {
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: ['GET', 'POST'],
+  },
 })
 
 // ---------------------------------------------------------------------------
@@ -133,6 +151,84 @@ function clearAutoEndedForActivity(activityId: string): void {
   }
 }
 
+/**
+ * Compute leaderboard entries for an activity. Mirrors the logic in the
+ * Next.js app's src/lib/leaderboard.ts (kept in sync by hand because the
+ * socket service ships as a separate process with its own Prisma client).
+ *
+ * @param upToQuestionOrder  if provided, only count answers for questions with
+ *                           questionOrder <= this value (intermediate leaderboard)
+ */
+async function computeLeaderboardEntries(
+  activityId: string,
+  upToQuestionOrder?: number,
+): Promise<LeaderboardEntry[]> {
+  const participants = await db.participant.findMany({
+    where: { activityId },
+    select: { id: true, displayName: true, uoid: true },
+  })
+
+  const answers = await db.answer.findMany({
+    where: {
+      activityId,
+      ...(upToQuestionOrder !== undefined
+        ? { question: { questionOrder: { lte: upToQuestionOrder } } }
+        : {}),
+    },
+    select: { participantId: true, score: true, isCorrect: true },
+  })
+
+  const agg = new Map<
+    string,
+    { totalScore: number; correctAnswers: number; answeredQuestions: number }
+  >()
+  for (const a of answers) {
+    const cur = agg.get(a.participantId) ?? {
+      totalScore: 0,
+      correctAnswers: 0,
+      answeredQuestions: 0,
+    }
+    cur.totalScore += a.score
+    if (a.isCorrect) cur.correctAnswers++
+    cur.answeredQuestions++
+    agg.set(a.participantId, cur)
+  }
+
+  const entries: LeaderboardEntry[] = participants.map((p) => {
+    const stats = agg.get(p.id) ?? {
+      totalScore: 0,
+      correctAnswers: 0,
+      answeredQuestions: 0,
+    }
+    return {
+      participantId: p.id,
+      displayName: p.displayName,
+      uoid: p.uoid,
+      totalScore: stats.totalScore,
+      correctAnswers: stats.correctAnswers,
+      answeredQuestions: stats.answeredQuestions,
+      rank: 0,
+    }
+  })
+
+  entries.sort((a, b) => {
+    if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore
+    return a.displayName.localeCompare(b.displayName)
+  })
+
+  let lastScore: number | null = null
+  let rank = 0
+  entries.forEach((e, idx) => {
+    if (lastScore === null || e.totalScore !== lastScore) {
+      rank = idx + 1
+      lastScore = e.totalScore
+    }
+    e.rank = rank
+  })
+
+  return entries
+}
+
 // ---------------------------------------------------------------------------
 // Connection
 // ---------------------------------------------------------------------------
@@ -215,6 +311,35 @@ io.on('connection', (socket) => {
             socket.emit('question_ended', qep)
           }
         }
+      } else if (
+        activity &&
+        activity.status === 'LIVE' &&
+        !activity.currentQuestionId &&
+        activity.currentLeaderboardId
+      ) {
+        // Leaderboard phase: admin is showing a leaderboard (no active
+        // question). Replay leaderboard_shown to the joining participant so
+        // they see the same view as everyone else.
+        const section = await db.leaderboardSection.findUnique({
+          where: { id: activity.currentLeaderboardId },
+        })
+        if (section && section.activityId === activityId) {
+          const entries = await computeLeaderboardEntries(
+            activityId,
+            section.afterQuestionOrder ?? undefined,
+          )
+          const payload: LeaderboardShownPayload = {
+            activityId,
+            leaderboardId: section.id,
+            title: section.title ?? 'Leaderboard',
+            entries,
+            isDefault: section.isDefault,
+          }
+          socket.emit('leaderboard_shown', payload)
+          console.log(
+            `[join_activity] late-joiner replayed leaderboard=${section.id} to "${participant.displayName}"`,
+          )
+        }
       }
 
       ack?.({ ok: true, count })
@@ -267,6 +392,18 @@ io.on('connection', (socket) => {
       }
 
       const isCorrect = selectedOption === question.correctOption
+      // Scoring formula: 1000 base for correct + time bonus proportional to
+      // remaining time; 0 for incorrect. Mirrors src/lib/serializers.ts
+      // computeScore() — duplicated here because the mini-service is a separate
+      // process with its own Prisma client and cannot import the app's helpers.
+      const totalMs = question.timeLimit * 1000
+      const nowMs = Date.now()
+      const timeTakenMs =
+        activity.questionStartedAt !== null
+          ? Math.max(0, nowMs - activity.questionStartedAt.getTime())
+          : 0
+      const remainingMs = Math.max(0, totalMs - timeTakenMs)
+      const score = isCorrect ? 1000 + Math.round((remainingMs / totalMs) * 1000) : 0
       try {
         await db.answer.create({
           data: {
@@ -275,10 +412,12 @@ io.on('connection', (socket) => {
             participantId: participant.id,
             selectedOption,
             isCorrect,
+            score,
+            timeTakenMs,
           },
         })
         console.log(
-          `[submit_answer] "${participant.displayName}" -> ${selectedOption} (correct=${isCorrect}) q=${questionId}`,
+          `[submit_answer] "${participant.displayName}" -> ${selectedOption} (correct=${isCorrect} score=${score} time=${timeTakenMs}ms) q=${questionId}`,
         )
       } catch (e) {
         // P2002 = unique violation on (participantId, questionId). Idempotent:
@@ -408,6 +547,8 @@ io.on('connection', (socket) => {
           currentQuestionId: question.id,
           questionStartedAt: now,
           questionEndsAt: endsAt,
+          // Clear any active leaderboard when a new question starts.
+          currentLeaderboardId: null,
         },
       })
       // New question for this activity — clear any prior auto-end tracking.
@@ -489,6 +630,8 @@ io.on('connection', (socket) => {
           currentQuestionId: null,
           questionStartedAt: null,
           questionEndsAt: null,
+          // Clear any active leaderboard when the activity ends.
+          currentLeaderboardId: null,
         },
       })
       const completed: ActivityCompletedPayload = { activityId }
@@ -497,6 +640,101 @@ io.on('connection', (socket) => {
     } catch (e) {
       console.error('[end_activity] error', e)
       socket.emit('error', { message: 'Failed to end activity' })
+    }
+  })
+
+  // -------------------- Admin: show / hide leaderboard --------------------
+  // show_leaderboard: admin displays a leaderboard to participants. Sets the
+  // activity's currentLeaderboardId (and clears currentQuestionId since we're
+  // no longer in the question phase), computes the entries (filtered by the
+  // leaderboard's afterQuestionOrder), and broadcasts `leaderboard_shown` to
+  // the whole activity room.
+  socket.on('show_leaderboard', async (payloadRaw: unknown, ack?: (r: unknown) => void) => {
+    try {
+      const payload = payloadRaw as { activityId?: string; leaderboardId?: string }
+      const { activityId, leaderboardId } = payload
+      const data = dataOf(socket)
+      if (
+        data.role !== 'admin' ||
+        data.activityId !== activityId ||
+        !activityId ||
+        !leaderboardId
+      ) {
+        socket.emit('error', { message: 'Not authorized' })
+        ack?.({ ok: false, error: 'not_authorized' })
+        return
+      }
+      const activity = await db.activity.findUnique({ where: { id: activityId } })
+      if (!activity || activity.status !== 'LIVE') {
+        socket.emit('error', { message: 'Activity is not LIVE' })
+        ack?.({ ok: false, error: 'not_live' })
+        return
+      }
+      const section = await db.leaderboardSection.findUnique({
+        where: { id: leaderboardId },
+      })
+      if (!section || section.activityId !== activityId) {
+        socket.emit('error', { message: 'Leaderboard not found for this activity' })
+        ack?.({ ok: false, error: 'leaderboard_not_found' })
+        return
+      }
+      // Move into leaderboard phase: clear question state, set leaderboard.
+      await db.activity.update({
+        where: { id: activityId },
+        data: {
+          currentQuestionId: null,
+          questionStartedAt: null,
+          questionEndsAt: null,
+          currentLeaderboardId: section.id,
+        },
+      })
+      const entries = await computeLeaderboardEntries(
+        activityId,
+        section.afterQuestionOrder ?? undefined,
+      )
+      const lsp: LeaderboardShownPayload = {
+        activityId,
+        leaderboardId: section.id,
+        title: section.title ?? 'Leaderboard',
+        entries,
+        isDefault: section.isDefault,
+      }
+      io.to(roomFor(activityId)).emit('leaderboard_shown', lsp)
+      console.log(
+        `[show_leaderboard] activity=${activityId} leaderboard=${section.id} afterQ=${section.afterQuestionOrder ?? 'default'} entries=${entries.length}`,
+      )
+      ack?.({ ok: true, entries: entries.length })
+    } catch (e) {
+      console.error('[show_leaderboard] error', e)
+      socket.emit('error', { message: 'Failed to show leaderboard' })
+      ack?.({ ok: false, error: 'internal' })
+    }
+  })
+
+  // hide_leaderboard: admin moves from the leaderboard view back to a neutral
+  // state (typically before starting the next question or ending the activity).
+  // Just clears currentLeaderboardId; does NOT broadcast anything — the next
+  // event (start_question / end_activity / another show_leaderboard) will drive
+  // the participant UI.
+  socket.on('hide_leaderboard', async (payloadRaw: unknown, ack?: (r: unknown) => void) => {
+    try {
+      const { activityId } = payloadRaw as { activityId?: string }
+      const data = dataOf(socket)
+      if (data.role !== 'admin' || data.activityId !== activityId || !activityId) {
+        socket.emit('error', { message: 'Not authorized' })
+        ack?.({ ok: false, error: 'not_authorized' })
+        return
+      }
+      await db.activity.update({
+        where: { id: activityId },
+        data: { currentLeaderboardId: null },
+      })
+      console.log(`[hide_leaderboard] activity=${activityId} leaderboard cleared`)
+      ack?.({ ok: true })
+    } catch (e) {
+      console.error('[hide_leaderboard] error', e)
+      socket.emit('error', { message: 'Failed to hide leaderboard' })
+      ack?.({ ok: false, error: 'internal' })
     }
   })
 

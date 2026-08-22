@@ -66,7 +66,7 @@ export default function Home() {
   }, [setAdmin])
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="relative min-h-screen flex flex-col w-full">
       {renderScreen(screen)}
     </div>
   )

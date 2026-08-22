@@ -11,7 +11,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -40,16 +39,24 @@ import {
   Copy,
   GripVertical,
   Loader2,
+  Lock,
   Plus,
   Presentation,
   Radio,
   Save,
   Sparkles,
   Trash2,
+  Trophy,
   Users,
 } from 'lucide-react'
 import { MAX_PARTICIPANTS_DISPLAY } from '@/lib/participant-icons'
-import type { ActivityDTO, ActivityStatus, OptionKey, QuestionDTO } from '@/lib/types'
+import type {
+  ActivityDTO,
+  ActivityStatus,
+  LeaderboardSectionDTO,
+  OptionKey,
+  QuestionDTO,
+} from '@/lib/types'
 import {
   DndContext,
   closestCenter,
@@ -67,13 +74,132 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
+// ─── Leaderboard helpers ────────────────────────────────────────────────────
+
+type SequenceItem =
+  | { type: 'question'; data: QuestionDTO; key: string }
+  | { type: 'leaderboard'; data: LeaderboardSectionDTO; key: string }
+
+function buildSequence(
+  questions: QuestionDTO[],
+  leaderboards: LeaderboardSectionDTO[],
+): SequenceItem[] {
+  const items: SequenceItem[] = []
+  const sortedQuestions = [...questions].sort((a, b) => a.questionOrder - b.questionOrder)
+  for (const q of sortedQuestions) {
+    items.push({ type: 'question', data: q, key: `q:${q.id}` })
+    const lb = leaderboards.find((l) => l.afterQuestionOrder === q.questionOrder)
+    if (lb) {
+      items.push({ type: 'leaderboard', data: lb, key: `l:${lb.id}` })
+    }
+  }
+  const defaultLb = leaderboards.find((l) => l.isDefault)
+  if (defaultLb) {
+    items.push({ type: 'leaderboard', data: defaultLb, key: `l:${defaultLb.id}` })
+  }
+  return items
+}
+
+// Sortable leaderboard card — shows a trophy illustration + "Leaderboard" text.
+// Default leaderboards are NOT draggable (no drag handle, lock icon).
+function SortableLeaderboardCard({
+  leaderboard,
+  isLast,
+  onDelete,
+}: {
+  leaderboard: LeaderboardSectionDTO
+  isLast: boolean
+  onDelete: () => void
+}) {
+  const isDefault = leaderboard.isDefault
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `l:${leaderboard.id}`, disabled: isDefault })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group flex w-full items-center gap-1.5 border-2 px-1.5 py-2 transition-all ${
+        isDefault
+          ? 'border-primary/30 bg-primary/5'
+          : 'border-primary/40 bg-primary/5 hover:border-primary/60'
+      }`}
+    >
+      {/* Drag handle — only for non-default */}
+      {isDefault ? (
+        <span className="flex h-6 w-5 shrink-0 items-center justify-center text-primary/40">
+          <Lock className="h-3 w-3" />
+        </span>
+      ) : (
+        <span
+          className="flex h-6 w-5 shrink-0 cursor-grab items-center justify-center text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </span>
+      )}
+
+      {/* Trophy illustration */}
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center bg-primary/15 text-primary">
+        <Trophy className="h-3.5 w-3.5" />
+      </span>
+
+      {/* Label */}
+      <div className="min-w-0 flex-1 pr-1">
+        <p className="truncate text-sm font-medium leading-tight text-primary">
+          {leaderboard.title || 'Leaderboard'}
+        </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground leading-tight">
+          {isDefault ? 'Final leaderboard' : isLast ? 'After last question' : 'Shows scores'}
+        </p>
+      </div>
+
+      {/* Delete — only for non-default */}
+      {!isDefault && (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label="Delete leaderboard"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              onDelete()
+            }
+          }}
+          className="flex h-6 w-6 shrink-0 items-center justify-center text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="h-3 w-3" />
+        </span>
+      )}
+    </div>
+  )
+}
+
 const OPTION_KEYS: OptionKey[] = ['A', 'B', 'C', 'D']
 const TIME_LIMITS = [15, 30, 45, 60, 90, 120]
 
 const STATUS_BADGE_CLASS: Record<ActivityStatus, string> = {
   DRAFT: 'bg-muted text-muted-foreground border-border',
   PUBLISHED: 'border-chart-3/40 bg-chart-3/15 text-chart-3',
-  LIVE: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+  LIVE: 'border-primary/40 bg-primary/15 text-primary',
   COMPLETED: 'border-chart-4/40 bg-chart-4/15 text-chart-4',
   ARCHIVED: 'bg-muted text-muted-foreground border-border',
 }
@@ -134,7 +260,7 @@ function SortableQuestionCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: question.id })
+  } = useSortable({ id: `q:${question.id}` })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -266,38 +392,72 @@ export function ActivityEditorScreen() {
     void fetchActivity()
   }, [fetchActivity])
 
-  // Reorder handler — called when a drag ends
+  // Reorder handler — called when a drag ends. Works with the MERGED list of
+  // questions + leaderboards using the unified reorder endpoint.
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event
       if (!over || active.id === over.id || !activity) return
 
-      const oldQuestions = activity.questions ?? []
-      const oldIndex = oldQuestions.findIndex((q) => q.id === active.id)
-      const newIndex = oldQuestions.findIndex((q) => q.id === over.id)
+      const questions = activity.questions ?? []
+      const leaderboards = activity.leaderboardSections ?? []
+      const sequence = buildSequence(questions, leaderboards)
+
+      const oldIndex = sequence.findIndex((item) => item.key === active.id)
+      const newIndex = sequence.findIndex((item) => item.key === over.id)
       if (oldIndex === -1 || newIndex === -1) return
 
-      // Optimistically reorder locally
-      const reordered = [...oldQuestions]
+      // Reorder locally
+      const reordered = [...sequence]
       const [moved] = reordered.splice(oldIndex, 1)
       reordered.splice(newIndex, 0, moved)
 
-      // Update local state with new order (reassign questionOrder)
-      const withNewOrder = reordered.map((q, i) => ({ ...q, questionOrder: i + 1 }))
-      setActivity({ ...activity, questions: withNewOrder })
+      // Build the items array for the unified reorder endpoint (exclude default leaderboard)
+      const items = reordered
+        .filter((item) => !(item.type === 'leaderboard' && item.data.isDefault))
+        .map((item) => ({
+          type: item.type,
+          id: item.data.id,
+        }))
+
+      // Optimistically update local state
+      const questionItems = items.filter((i) => i.type === 'question')
+      const newQuestionOrder = questionItems.map((i, idx) => {
+        const q = questions.find((qq) => qq.id === i.id)!
+        return { ...q, questionOrder: idx + 1 }
+      })
+      // Update leaderboard afterQuestionOrder locally
+      const newLeaderboards = leaderboards.map((lb) => {
+        if (lb.isDefault) return lb
+        const itemIndex = reordered.findIndex((r) => r.type === 'leaderboard' && r.data.id === lb.id)
+        if (itemIndex === -1) return lb
+        // Find the preceding question's new order
+        let qOrder = 0
+        for (let i = 0; i < itemIndex; i++) {
+          if (reordered[i].type === 'question') qOrder++
+        }
+        return { ...lb, afterQuestionOrder: qOrder }
+      })
+      setActivity({ ...activity, questions: newQuestionOrder, leaderboardSections: newLeaderboards })
 
       // Persist to server
       try {
-        const res = await api.patch<{ questions: QuestionDTO[] }>(
-          `/api/activities/${activityId}/questions/reorder`,
-          { questionIds: withNewOrder.map((q) => q.id) },
+        const res = await api.patch<{
+          questions: QuestionDTO[]
+          leaderboardSections: LeaderboardSectionDTO[]
+        }>(`/api/activities/${activityId}/items/reorder`, { items })
+        setActivity((prev) =>
+          prev
+            ? {
+                ...prev,
+                questions: res.questions,
+                leaderboardSections: res.leaderboardSections,
+              }
+            : prev,
         )
-        // Use server response as source of truth
-        setActivity({ ...activity, questions: res.questions })
       } catch (err) {
-        const msg = err instanceof ApiError ? err.message : 'Failed to reorder questions'
+        const msg = err instanceof ApiError ? err.message : 'Failed to reorder'
         toast.error(msg)
-        // Revert on error
         void fetchActivity()
       }
     },
@@ -393,6 +553,54 @@ export function ActivityEditorScreen() {
       toast.success('Question added')
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Failed to add question'
+      toast.error(msg)
+    }
+  }
+
+  async function handleAddLeaderboard() {
+    if (!activity) return
+    const questions = activity.questions ?? []
+    if (questions.length === 0) {
+      toast.error('Add at least one question first')
+      return
+    }
+    try {
+      const res = await api.post<{ leaderboard: LeaderboardSectionDTO }>(
+        `/api/activities/${activity.id}/leaderboards`,
+        {},
+      )
+      setActivity((prev) =>
+        prev
+          ? {
+              ...prev,
+              leaderboardSections: [...(prev.leaderboardSections ?? []), res.leaderboard],
+            }
+          : prev,
+      )
+      toast.success('Leaderboard added')
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to add leaderboard'
+      toast.error(msg)
+    }
+  }
+
+  async function handleDeleteLeaderboard(leaderboardId: string) {
+    if (!activity) return
+    try {
+      await api.delete(`/api/leaderboards/${leaderboardId}`)
+      setActivity((prev) =>
+        prev
+          ? {
+              ...prev,
+              leaderboardSections: (prev.leaderboardSections ?? []).filter(
+                (l) => l.id !== leaderboardId,
+              ),
+            }
+          : prev,
+      )
+      toast.success('Leaderboard removed')
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to delete leaderboard'
       toast.error(msg)
     }
   }
@@ -524,8 +732,8 @@ export function ActivityEditorScreen() {
   return (
     <Shell>
       {/* Top bar */}
-      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur">
-        <div className="flex items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 glass-bar backdrop-blur-md backdrop-saturate-150">
+        <div className="flex items-center gap-3 px-4 py-3 sm:px-8 lg:px-12 xl:px-16">
           <Button
             variant="ghost"
             size="icon"
@@ -633,37 +841,53 @@ export function ActivityEditorScreen() {
         </div>
       </header>
 
-      <main className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-          {/* Question list */}
-          <aside className="lg:sticky lg:top-28 lg:self-start">
+      <main className="w-full flex-1 px-4 py-6 sm:px-8 lg:px-12 xl:px-16">
+        <div className="grid gap-6 lg:grid-cols-[minmax(280px,340px)_1fr]">
+          {/* Question + leaderboard list (merged, interleaved) */}
+          <aside className="min-w-0 lg:sticky lg:top-28 lg:self-start">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-muted-foreground">
                 Questions ({questionCount})
               </h2>
             </div>
-            <ScrollArea className="h-[calc(100vh-14rem)]">
+            <div className="h-[calc(100vh-14rem)] overflow-y-auto scroll-thin pr-1">
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={(activity.questions ?? []).map((q) => q.id)}
+                  items={buildSequence(activity.questions ?? [], activity.leaderboardSections ?? []).map((item) => item.key)}
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="space-y-2">
-                    {(activity.questions ?? []).map((q, i) => (
-                      <SortableQuestionCard
-                        key={q.id}
-                        question={q}
-                        order={i + 1}
-                        isSelected={q.id === selectedId}
-                        isLiveCurrent={activity.status === 'LIVE' && activity.currentQuestionId === q.id}
-                        onSelect={() => setSelectedId(q.id)}
-                        onDelete={() => setDeletingQuestion(q)}
-                      />
-                    ))}
+                    {buildSequence(activity.questions ?? [], activity.leaderboardSections ?? []).map((item) => {
+                      if (item.type === 'question') {
+                        const q = item.data
+                        const i = (activity.questions ?? []).findIndex((qq) => qq.id === q.id)
+                        return (
+                          <SortableQuestionCard
+                            key={item.key}
+                            question={q}
+                            order={i + 1}
+                            isSelected={q.id === selectedId}
+                            isLiveCurrent={activity.status === 'LIVE' && activity.currentQuestionId === q.id}
+                            onSelect={() => setSelectedId(q.id)}
+                            onDelete={() => setDeletingQuestion(q)}
+                          />
+                        )
+                      }
+                      const lb = item.data
+                      const sequence = buildSequence(activity.questions ?? [], activity.leaderboardSections ?? [])
+                      return (
+                        <SortableLeaderboardCard
+                          key={item.key}
+                          leaderboard={lb}
+                          isLast={sequence[sequence.length - 1]?.key === item.key}
+                          onDelete={() => handleDeleteLeaderboard(lb.id)}
+                        />
+                      )
+                    })}
                     {questionCount === 0 && (
                       <p className="px-3 py-6 text-center text-xs text-muted-foreground">
                         No questions yet. Add your first one!
@@ -672,18 +896,30 @@ export function ActivityEditorScreen() {
                   </div>
                 </SortableContext>
               </DndContext>
-              <Button
-                onClick={handleAddQuestion}
-                variant="outline"
-                className="mt-3 w-full border-dashed"
-              >
-                <Plus className="h-4 w-4" /> Add question
-              </Button>
-            </ScrollArea>
+              {/* Add question + Add leaderboard buttons */}
+              <div className="mt-3 flex gap-2">
+                <Button
+                  onClick={handleAddQuestion}
+                  variant="outline"
+                  className="flex-1 border-dashed"
+                >
+                  <Plus className="h-4 w-4" /> Question
+                </Button>
+                <Button
+                  onClick={handleAddLeaderboard}
+                  variant="outline"
+                  className="flex-1 border-dashed border-primary/40 text-primary hover:bg-primary/10 hover:text-primary"
+                  disabled={questionCount === 0}
+                  title={questionCount === 0 ? 'Add a question first' : 'Add a leaderboard after the last question'}
+                >
+                  <Trophy className="h-4 w-4" /> Leaderboard
+                </Button>
+              </div>
+            </div>
           </aside>
 
           {/* Editor */}
-          <section>
+          <section className="min-w-0">
             <AnimatePresence mode="wait">
               {selectedQuestion && form ? (
                 <motion.div
@@ -711,14 +947,14 @@ export function ActivityEditorScreen() {
                       {isLiveQuestion ? (
                         <Badge
                           variant="outline"
-                          className="border-rose-500/40 text-rose-600 dark:text-rose-400"
+                          className="border-destructive/40 text-destructive"
                         >
                           <Radio className="mr-1 h-3 w-3" /> Live
                         </Badge>
                       ) : dirty ? (
                         <Badge
                           variant="outline"
-                          className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+                          className="border-primary/40 text-primary"
                         >
                           Unsaved changes
                         </Badge>
@@ -752,7 +988,7 @@ export function ActivityEditorScreen() {
                                 key={key}
                                 className={`flex items-center gap-2 rounded-xl border-2 px-2 py-1.5 transition-colors ${
                                   isCorrect
-                                    ? 'border-emerald-500/60 bg-emerald-500/5'
+                                    ? 'border-primary/60 bg-primary/5'
                                     : 'border-border bg-card'
                                 }`}
                               >
@@ -764,7 +1000,7 @@ export function ActivityEditorScreen() {
                                   aria-pressed={isCorrect}
                                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-colors ${
                                     isCorrect
-                                      ? 'bg-emerald-500 text-white'
+                                      ? 'bg-primary text-primary-foreground'
                                       : 'bg-muted text-muted-foreground hover:bg-primary/15 hover:text-primary'
                                   }`}
                                 >
@@ -783,7 +1019,7 @@ export function ActivityEditorScreen() {
                         </div>
                         <p className="text-xs text-muted-foreground">
                           Correct answer:{' '}
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          <span className="font-semibold text-primary">
                             {form.correctOption}
                           </span>
                         </p>
@@ -978,7 +1214,7 @@ export function ActivityEditorScreen() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-stage-app">
       {children}
       <AppFooter />
     </div>

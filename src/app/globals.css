@@ -48,77 +48,94 @@
   --radius-4xl: 0;
 }
 
-/* Light theme — warm off-white background with vibrant fuchsia primary */
+/* ═══════════════════════════════════════════════════════════════════════════
+   ATOM PLAY — Modern Black + Pink Glassmorphism Design System
+   ═══════════════════════════════════════════════════════════════════════════
+   Light theme is unused (app is dark-only) but kept for completeness.
+   The dark theme is the single source of truth. */
+
 :root {
   --radius: 0;
-  --background: oklch(0.99 0.005 320);
-  --foreground: oklch(0.18 0.02 320);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.02 320);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.02 320);
-  /* Vibrant fuchsia/magenta — distinct from indigo (hue ~265) and blue (hue ~240) */
-  --primary: oklch(0.55 0.235 340);
-  --primary-foreground: oklch(0.99 0.005 320);
-  --secondary: oklch(0.96 0.015 340);
-  --secondary-foreground: oklch(0.3 0.08 340);
-  --muted: oklch(0.965 0.01 340);
-  --muted-foreground: oklch(0.5 0.03 340);
-  --accent: oklch(0.95 0.03 70);
-  --accent-foreground: oklch(0.35 0.1 60);
-  --destructive: oklch(0.58 0.24 25);
-  --border: oklch(0.9 0.015 340);
-  --input: oklch(0.92 0.01 340);
-  --ring: oklch(0.55 0.235 340);
-  /* Chart colors — warm + magenta spectrum, avoiding blue/indigo */
-  --chart-1: oklch(0.55 0.235 340);   /* fuchsia */
-  --chart-2: oklch(0.65 0.2 145);      /* emerald */
-  --chart-3: oklch(0.75 0.19 70);      /* amber */
-  --chart-4: oklch(0.6 0.22 12);       /* coral/red */
-  --chart-5: oklch(0.5 0.2 300);       /* purple (not indigo) */
-  --sidebar: oklch(0.985 0.005 320);
-  --sidebar-foreground: oklch(0.18 0.02 320);
-  --sidebar-primary: oklch(0.55 0.235 340);
-  --sidebar-primary-foreground: oklch(0.99 0.005 320);
-  --sidebar-accent: oklch(0.96 0.015 340);
-  --sidebar-accent-foreground: oklch(0.3 0.08 340);
-  --sidebar-border: oklch(0.9 0.015 340);
-  --sidebar-ring: oklch(0.55 0.235 340);
+  /* Light — mirrors dark palette so any flash is invisible */
+  --background: oklch(0.08 0.003 350);
+  --foreground: oklch(0.97 0.005 350);
+  --card: oklch(0.12 0.006 350);
+  --card-foreground: oklch(0.97 0.005 350);
+  --popover: oklch(0.12 0.006 350);
+  --popover-foreground: oklch(0.97 0.005 350);
+  --primary: oklch(0.68 0.27 350);
+  --primary-foreground: oklch(0.1 0 0);
+  --secondary: oklch(0.18 0.02 350);
+  --secondary-foreground: oklch(0.95 0.01 350);
+  --muted: oklch(0.16 0.01 350);
+  --muted-foreground: oklch(0.62 0.03 350);
+  --accent: oklch(0.2 0.04 350);
+  --accent-foreground: oklch(0.95 0.02 350);
+  --destructive: oklch(0.62 0.24 25);
+  --border: oklch(0.7 0.2 350 / 0.12);
+  --input: oklch(0.7 0.2 350 / 0.14);
+  --ring: oklch(0.68 0.27 350);
+  /* Chart spectrum — 4 distinct NEON colors (pink, cyan, green, amber) */
+  --chart-1: oklch(0.72 0.28 350);   /* A — neon pink/magenta */
+  --chart-2: oklch(0.82 0.17 195);   /* B — neon cyan */
+  --chart-3: oklch(0.82 0.24 140);   /* C — neon green/lime */
+  --chart-4: oklch(0.80 0.19 75);    /* D — neon amber/yellow */
+  --chart-5: oklch(0.65 0.25 355);
+  --sidebar: oklch(0.1 0.004 350);
+  --sidebar-foreground: oklch(0.97 0.005 350);
+  --sidebar-primary: oklch(0.68 0.27 350);
+  --sidebar-primary-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.18 0.02 350);
+  --sidebar-accent-foreground: oklch(0.95 0.01 350);
+  --sidebar-border: oklch(0.7 0.2 350 / 0.12);
+  --sidebar-ring: oklch(0.68 0.27 350);
 }
 
-/* Dark theme — deep plum background */
+/* ─── DARK THEME (the only theme that matters) ────────────────────────────
+   Deep black base, vibrant hot-pink primary, translucent glass surfaces. */
 .dark {
-  --background: oklch(0.16 0.02 320);
-  --foreground: oklch(0.97 0.01 320);
-  --card: oklch(0.21 0.025 320);
-  --card-foreground: oklch(0.97 0.01 320);
-  --popover: oklch(0.21 0.025 320);
-  --popover-foreground: oklch(0.97 0.01 320);
-  --primary: oklch(0.7 0.22 340);
-  --primary-foreground: oklch(0.18 0.02 320);
-  --secondary: oklch(0.27 0.03 320);
-  --secondary-foreground: oklch(0.97 0.01 320);
-  --muted: oklch(0.26 0.025 320);
-  --muted-foreground: oklch(0.7 0.03 320);
-  --accent: oklch(0.32 0.05 60);
-  --accent-foreground: oklch(0.95 0.03 70);
-  --destructive: oklch(0.7 0.2 25);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.7 0.22 340);
-  --chart-1: oklch(0.7 0.22 340);
-  --chart-2: oklch(0.7 0.18 150);
-  --chart-3: oklch(0.78 0.18 70);
-  --chart-4: oklch(0.68 0.22 15);
-  --chart-5: oklch(0.62 0.2 300);
-  --sidebar: oklch(0.21 0.025 320);
-  --sidebar-foreground: oklch(0.97 0.01 320);
-  --sidebar-primary: oklch(0.7 0.22 340);
-  --sidebar-primary-foreground: oklch(0.18 0.02 320);
-  --sidebar-accent: oklch(0.27 0.03 320);
-  --sidebar-accent-foreground: oklch(0.97 0.01 320);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.7 0.22 340);
+  /* Core surfaces — layered blacks with the faintest pink warmth */
+  --background: oklch(0.085 0.004 350);          /* near-black, whisper of pink */
+  --foreground: oklch(0.97 0.006 350);           /* warm white */
+  --card: oklch(0.13 0.008 350);                 /* glass card base */
+  --card-foreground: oklch(0.97 0.006 350);
+  --popover: oklch(0.11 0.007 350);
+  --popover-foreground: oklch(0.97 0.006 350);
+
+  /* The star of the show — hot pink / magenta */
+  --primary: oklch(0.69 0.27 350);
+  --primary-foreground: oklch(0.1 0 0);
+
+  --secondary: oklch(0.17 0.015 350);
+  --secondary-foreground: oklch(0.95 0.01 350);
+  --muted: oklch(0.15 0.01 350);
+  --muted-foreground: oklch(0.6 0.035 350);
+  --accent: oklch(0.22 0.06 350);
+  --accent-foreground: oklch(0.95 0.02 350);
+  --destructive: oklch(0.62 0.24 25);
+
+  /* Translucent pink-tinted borders for glass edges */
+  --border: oklch(0.72 0.22 350 / 0.14);
+  --input: oklch(0.72 0.22 350 / 0.16);
+  --ring: oklch(0.69 0.27 350);
+
+  /* Chart spectrum — 4 distinct NEON colors for quiz options A/B/C/D
+     (pink, cyan, green, amber). High luminance + chroma for vivid glow
+     on the black background. chart-5 kept as a pink variant. */
+  --chart-1: oklch(0.72 0.28 350);   /* A — neon pink/magenta */
+  --chart-2: oklch(0.82 0.17 195);   /* B — neon cyan */
+  --chart-3: oklch(0.82 0.24 140);   /* C — neon green/lime */
+  --chart-4: oklch(0.80 0.19 75);    /* D — neon amber/yellow */
+  --chart-5: oklch(0.66 0.26 340);
+
+  --sidebar: oklch(0.1 0.005 350);
+  --sidebar-foreground: oklch(0.97 0.006 350);
+  --sidebar-primary: oklch(0.69 0.27 350);
+  --sidebar-primary-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.17 0.015 350);
+  --sidebar-accent-foreground: oklch(0.95 0.01 350);
+  --sidebar-border: oklch(0.72 0.22 350 / 0.14);
+  --sidebar-ring: oklch(0.69 0.27 350);
 }
 
 @layer base {
@@ -128,79 +145,265 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* Subtle film grain via SVG noise — adds depth to flat black */
+    position: relative;
   }
 }
 
-/* All edges sharp — no rounded corners anywhere, on any element.
+/* ═══ SHARP EDGES — NON-NEGOTIABLE ═════════════════════════════════════════
+   All edges sharp — no rounded corners anywhere, on any element.
    Declared OUTSIDE any cascade layer so it beats Tailwind utilities
-   (including rounded-full, rounded-2xl, etc.) with !important. */
+   (including rounded-full, rounded-2xl, etc.) with !important.
+   The ONLY exception is .bubble-circle (participant lobby avatars). */
 *,
 *::before,
 *::after {
   border-radius: 0 !important;
   border-start-start-radius: 0 !important;
   border-start-end-radius: 0 !important;
+  border-start-radius: 0 !important;
   border-end-start-radius: 0 !important;
   border-end-end-radius: 0 !important;
 }
 
-/* Presentation-grade background gradients */
-@layer utilities {
-  .bg-stage {
-    background-image:
-      radial-gradient(60% 50% at 15% 10%, oklch(0.55 0.235 340 / 0.18) 0%, transparent 60%),
-      radial-gradient(55% 45% at 90% 20%, oklch(0.75 0.19 70 / 0.16) 0%, transparent 55%),
-      radial-gradient(70% 60% at 80% 100%, oklch(0.65 0.2 145 / 0.14) 0%, transparent 60%);
-  }
-  .bg-stage-dark {
-    background-image:
-      radial-gradient(60% 50% at 15% 10%, oklch(0.7 0.22 340 / 0.22) 0%, transparent 60%),
-      radial-gradient(55% 45% at 90% 20%, oklch(0.78 0.18 70 / 0.16) 0%, transparent 55%),
-      radial-gradient(70% 60% at 80% 100%, oklch(0.7 0.18 150 / 0.16) 0%, transparent 60%);
-  }
-  /* Unified activity gradient — applied across the ENTIRE activity
-   * (admin live-presentation all phases + all participant screens).
-   * "Maximum dark" base (very dark plum) with a strong pink/magenta glow
-   * top-left transitioning to a mild orange/amber glow bottom-right, plus
-   * a subtle mid pink blend. Consistent with the home/lobby warm-pink vibe
-   * but darker and pink→orange only (no green). */
-  .bg-stage-activity {
-    background-color: oklch(0.13 0.025 320);
-    background-image:
-      radial-gradient(75% 60% at 12% 8%, oklch(0.72 0.25 340 / 0.40) 0%, transparent 60%),
-      radial-gradient(70% 55% at 88% 92%, oklch(0.80 0.17 70 / 0.32) 0%, transparent 60%),
-      radial-gradient(55% 50% at 50% 50%, oklch(0.55 0.22 350 / 0.16) 0%, transparent 70%);
-  }
-  .gradient-text {
-    background: linear-gradient(120deg, var(--primary), oklch(0.7 0.2 60));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-  .glass {
-    background: color-mix(in oklab, var(--card) 70%, transparent);
-    backdrop-filter: blur(12px);
-  }
-  /* custom scrollbar */
-  .scroll-thin::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  .scroll-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .scroll-thin::-webkit-scrollbar-thumb {
-    background: color-mix(in oklab, var(--primary) 35%, transparent);
-    border-radius: 999px;
-  }
-  .scroll-thin::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--primary) 55%, transparent);
-  }
+/* ═══ MODERN BACKGROUND GRAPHICS ═══════════════════════════════════════════ */
 
-  /* Participant bubbles on the live lobby stage — the only place we render
-     true circles. Lives inside the utilities layer so it overrides the
-     base-layer `* { border-radius: 0 !important }` reset (utilities layer
-     wins over base layer in the cascade layer order). */
+/* The signature HOME background: deep black canvas with animated pink
+   gradient orbs, a fine grid mesh, and 3 radial glows. Used ONLY on the
+   landing screen — the full immersive pattern. */
+.bg-stage {
+  background-color: var(--background);
+  background-image:
+    /* Top-left pink glow orb */
+    radial-gradient(ellipse 70% 55% at 12% 8%, oklch(0.69 0.27 350 / 0.22) 0%, transparent 55%),
+    /* Bottom-right deeper magenta glow */
+    radial-gradient(ellipse 65% 50% at 88% 95%, oklch(0.55 0.26 345 / 0.18) 0%, transparent 55%),
+    /* Center diffuse pink wash */
+    radial-gradient(ellipse 50% 40% at 50% 50%, oklch(0.65 0.22 355 / 0.06) 0%, transparent 70%),
+    /* Fine grid mesh — barely visible, adds tech texture (home pattern) */
+    linear-gradient(oklch(0.72 0.22 350 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.72 0.22 350 / 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+}
+
+/* Variant for dark — stronger glow */
+.bg-stage-dark {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 70% 55% at 12% 8%, oklch(0.69 0.27 350 / 0.28) 0%, transparent 55%),
+    radial-gradient(ellipse 65% 50% at 88% 95%, oklch(0.55 0.26 345 / 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, oklch(0.65 0.22 355 / 0.08) 0%, transparent 70%),
+    linear-gradient(oklch(0.72 0.22 350 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.72 0.22 350 / 0.05) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+}
+
+/* ═══ ADMIN APP BACKGROUND ═════════════════════════════════════════════════
+   Uses the HOME screen's grid-mesh pattern (so the app feels consistent
+   with the landing page) but with a MINIMAL pink gradient concentrated
+   at the TOP only — clean, professional, not overwhelming. The animated
+   background orbs from layout.tsx still show through the transparent base. */
+.bg-stage-app {
+  background-color: transparent;
+  background-image:
+    /* Minimal pink gradient — top edge only, fades to transparent ~35% down */
+    linear-gradient(180deg,
+      oklch(0.69 0.27 350 / 0.10) 0%,
+      oklch(0.69 0.27 350 / 0.05) 12%,
+      oklch(0.69 0.27 350 / 0.02) 25%,
+      transparent 38%),
+    /* Home screen grid-mesh pattern — carried into the app */
+    linear-gradient(oklch(0.72 0.22 350 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.72 0.22 350 / 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+}
+
+/* ═══ PRESENTATION / ACTIVITY BACKGROUND ═══════════════════════════════════
+   For live-presentation + participant screens. Minimal pink gradient at
+   the TOP only (immersive but not distracting), darker base for focus.
+   Grid mesh kept subtle. The animated orbs show through faintly. */
+.bg-stage-activity {
+  background-color: oklch(0.06 0.005 350);
+  background-image:
+    /* Minimal pink gradient — top only, fades by ~40% down */
+    linear-gradient(180deg,
+      oklch(0.71 0.27 350 / 0.16) 0%,
+      oklch(0.71 0.27 350 / 0.08) 14%,
+      oklch(0.71 0.27 350 / 0.03) 28%,
+      transparent 42%),
+    /* Subtle grid mesh */
+    linear-gradient(oklch(0.72 0.22 350 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.72 0.22 350 / 0.04) 1px, transparent 1px);
+  background-size: 100% 100%, 44px 44px, 44px 44px;
+  background-attachment: fixed;
+}
+
+/* ═══ GLASSMORPHISM + VISUAL UTILITIES ═════════════════════════════════════
+   Defined OUTSIDE any @layer so they override Tailwind's preflight/base
+   reset (which strips backdrop-filter). Unlayered rules win over layered
+   ones in the cascade for non-important declarations. backdrop-filter and
+   background get !important for extra safety against utility overrides. */
+
+/* RECOMPILE_V5  - Standard glass panel — the workhorse surface
+   Uses --tw-backdrop-blur/saturate variables which Tailwind's preflight
+   composes into backdrop-filter. This avoids Lightning CSS stripping the
+   unprefixed backdrop-filter property. */
+.glass {
+  background: oklch(0.16 0.01 350 / 0.55) !important;
+  --tw-backdrop-blur: blur(16px) !important;
+  --tw-backdrop-saturate: saturate(140%) !important;
+  backdrop-filter: blur(16px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
+  border: 1px solid oklch(0.72 0.22 350 / 0.14) !important;
+  box-shadow:
+    0 4px 24px -8px oklch(0 0 0 / 0.5),
+    inset 0 1px 0 oklch(1 0 0 / 0.04);
+}
+
+/* Stronger glass — for cards that need to feel solid */
+.glass-strong {
+  background: oklch(0.14 0.012 350 / 0.45) !important;
+  --tw-backdrop-blur: blur(20px) !important;
+  --tw-backdrop-saturate: saturate(150%) !important;
+  backdrop-filter: blur(20px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
+  border: 1px solid oklch(0.72 0.22 350 / 0.25) !important;
+  box-shadow:
+    0 8px 32px -12px oklch(0 0 0 / 0.6),
+    inset 0 1px 0 oklch(1 0 0 / 0.08);
+}
+
+/* Subtle glass — for headers, footers, top bars */
+.glass-bar {
+  background: oklch(0.09 0.005 350 / 0.65) !important;
+  --tw-backdrop-blur: blur(14px) !important;
+  --tw-backdrop-saturate: saturate(130%) !important;
+  backdrop-filter: blur(14px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(130%) !important;
+  border-bottom: 1px solid oklch(0.72 0.22 350 / 0.15) !important;
+}
+
+/* Pink glow — for primary CTAs and focused elements */
+.pink-glow {
+  box-shadow:
+    0 0 0 1px oklch(0.69 0.27 350 / 0.3),
+    0 4px 20px -4px oklch(0.69 0.27 350 / 0.45),
+    0 0 40px -8px oklch(0.69 0.27 350 / 0.25);
+}
+.pink-glow-hover {
+  transition: box-shadow 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.3s ease;
+}
+.pink-glow-hover:hover {
+  box-shadow:
+    0 0 0 1px oklch(0.69 0.27 350 / 0.5),
+    0 8px 32px -6px oklch(0.69 0.27 350 / 0.5),
+    0 0 60px -10px oklch(0.69 0.27 350 / 0.35);
+  transform: translateY(-2px);
+}
+
+/* Gradient text — pink shimmer */
+.gradient-text {
+  background: linear-gradient(110deg,
+    oklch(0.72 0.27 355) 0%,
+    oklch(0.82 0.22 360) 40%,
+    oklch(0.68 0.26 350) 75%,
+    oklch(0.75 0.24 355) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradient-pan 6s linear infinite;
+}
+
+/* Animated gradient border — for hero cards / featured elements */
+.glow-border {
+  position: relative;
+}
+.glow-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  background: linear-gradient(130deg,
+    oklch(0.69 0.27 350 / 0.6),
+    oklch(0.69 0.27 350 / 0.05) 40%,
+    transparent 60%,
+    oklch(0.69 0.27 350 / 0.3));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  opacity: 0.7;
+}
+.glow-border:hover::before {
+  opacity: 1;
+}
+
+/* Shimmer overlay — sweep across on hover */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg,
+    transparent 30%,
+    oklch(1 0 0 / 0.12) 50%,
+    transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.shimmer:hover::after {
+  transform: translateX(100%);
+}
+
+/* Custom scrollbar — pink themed */
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: oklch(0.1 0.005 350);
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: oklch(0.69 0.27 350 / 0.4);
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.69 0.27 350 / 0.65);
+}
+
+/* Float animation for decorative orbs / icons */
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+.animate-float-slow {
+  animation: float 9s ease-in-out infinite;
+}
+/* Pulse glow for live indicators */
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+/* Slow spin for decorative rings */
+.animate-spin-slow {
+  animation: spin 14s linear infinite;
+}
+
+/* Participant bubbles on the live lobby stage — the ONLY place we render
+   true circles. Must stay inside @layer utilities: for !important
+   declarations, layered rules beat unlayered rules (cascade reversal),
+   so this overrides the unlayered `* { border-radius: 0 !important }`. */
+@layer utilities {
   .bubble-circle,
   .bubble-circle::before,
   .bubble-circle::after {
@@ -212,5 +415,40 @@
   }
 }
 
-/* (Legacy override block removed — the rule now lives inside @layer utilities
-   above so Tailwind v4 reliably emits it.) */
+/* ═══ KEYFRAMES ═════════════════════════════════════════════════════════════ */
+@keyframes gradient-pan {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 oklch(0.69 0.27 350 / 0.5);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 0 8px oklch(0.69 0.27 350 / 0);
+  }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .gradient-text { animation: none; }
+}
+
+/* Selection color — pink */
+::selection {
+  background: oklch(0.69 0.27 350 / 0.35);
+  color: oklch(0.98 0.005 350);
+}

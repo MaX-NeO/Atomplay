@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { computeDistribution } from '@/lib/serializers'
+import { computeLeaderboardEntries } from '@/lib/leaderboard'
 import type { ActivityStateResponse, OptionKey } from '@/lib/types'
 
 // GET /api/activities/[code]/state — participant sync endpoint.
@@ -34,6 +35,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     participantCount,
     currentQuestion: null,
     lastReveal: null,
+    currentLeaderboard: null,
   }
 
   if (activity.status === 'LIVE' && activity.currentQuestionId) {
@@ -75,6 +77,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           correctOption: question.correctOption as OptionKey,
           distribution: computeDistribution(answers),
         }
+      }
+    }
+  } else if (
+    activity.status === 'LIVE' &&
+    !activity.currentQuestionId &&
+    activity.currentLeaderboardId
+  ) {
+    // Leaderboard phase: admin has shown a leaderboard (no active question).
+    // Compute the entries using the leaderboard section's afterQuestionOrder
+    // as the upper bound for which answers to count.
+    const section = await db.leaderboardSection.findUnique({
+      where: { id: activity.currentLeaderboardId },
+    })
+    if (section && section.activityId === activity.id) {
+      const entries = await computeLeaderboardEntries(
+        activity.id,
+        section.afterQuestionOrder ?? undefined,
+      )
+      response.currentLeaderboard = {
+        leaderboardId: section.id,
+        title: section.title ?? 'Leaderboard',
+        isDefault: section.isDefault,
+        entries,
       }
     }
   } else if (activity.status === 'COMPLETED') {

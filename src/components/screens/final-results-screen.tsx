@@ -17,12 +17,14 @@ import {
   LayoutDashboard,
   Award,
   ListOrdered,
+  BarChart3,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { api, ApiError } from '@/lib/api-client'
 import { AppFooter } from '@/components/shared/app-footer'
 import { ThemeToggle } from '@/components/shared/theme-toggle'
 import { ResultBars } from '@/components/shared/result-bars'
+import { LeaderboardChart } from '@/components/shared/leaderboard-chart'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -33,6 +35,7 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +49,7 @@ import { toast } from 'sonner'
 import type {
   ActivityDTO,
   ActivityResultsResponse,
+  LeaderboardEntry,
   OptionKey,
 } from '@/lib/types'
 
@@ -75,6 +79,7 @@ export function FinalResultsScreen() {
 
   const [booting, setBooting] = useState(true)
   const [results, setResults] = useState<ActivityResultsResponse | null>(null)
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([])
   const [labelsByQ, setLabelsByQ] = useState<Record<string, OptionLabels>>({})
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -100,9 +105,10 @@ export function FinalResultsScreen() {
   async function fetchAll() {
     setLoading(true)
     try {
-      const [activityRes, resultsRes] = await Promise.all([
+      const [activityRes, resultsRes, leaderboardRes] = await Promise.all([
         api.get<{ activity: ActivityDTO }>(`/api/activities/${activityId}`),
         api.get<ActivityResultsResponse>(`/api/activities/${activityId}/results`),
+        api.get<{ entries: LeaderboardEntry[] }>(`/api/activities/${activityId}/leaderboard`),
       ])
       const labelsMap: Record<string, OptionLabels> = {}
       for (const q of activityRes.activity.questions ?? []) {
@@ -115,6 +121,7 @@ export function FinalResultsScreen() {
       }
       setLabelsByQ(labelsMap)
       setResults(resultsRes)
+      setLeaderboardEntries(leaderboardRes.entries)
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setNotFound(true)
@@ -139,7 +146,7 @@ export function FinalResultsScreen() {
 
   if (booting) {
     return (
-      <div className="flex min-h-screen flex-col bg-background">
+      <div className="flex min-h-screen flex-col bg-stage-app">
         <main className="flex flex-1 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </main>
@@ -152,14 +159,14 @@ export function FinalResultsScreen() {
 
   if (notFound) {
     return (
-      <div className="flex min-h-screen flex-col bg-background">
+      <div className="flex min-h-screen flex-col bg-stage-app">
         <ResultsHeader
           admin={admin}
           onBack={() => navigate('admin-dashboard')}
           onSignOut={handleSignOut}
           onNavigateAdmins={() => navigate('admin-admins')}
         />
-        <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-16 text-center sm:px-6">
+        <main className="w-full flex-1 px-4 py-16 text-center sm:px-8 lg:px-12 xl:px-16">
           <h1 className="text-2xl font-bold">Results not found</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             This activity may have been deleted, or you do not have access to it.
@@ -178,7 +185,7 @@ export function FinalResultsScreen() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-stage">
+    <div className="flex min-h-screen flex-col bg-stage-app">
       <ResultsHeader
         admin={admin}
         onBack={() => navigate('admin-dashboard')}
@@ -186,7 +193,7 @@ export function FinalResultsScreen() {
         onNavigateAdmins={() => navigate('admin-admins')}
       />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="w-full flex-1 px-4 py-8 sm:px-8 lg:px-12 xl:px-16">
         {loading || !results ? (
           <ResultsSkeleton />
         ) : (
@@ -200,7 +207,7 @@ export function FinalResultsScreen() {
             >
               <Badge
                 variant="secondary"
-                className="mb-4 gap-1.5 rounded-full border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                className="mb-4 gap-1.5 border-primary/30 bg-primary/15 text-primary"
               >
                 <Trophy className="h-3.5 w-3.5" />
                 Quiz Complete
@@ -255,85 +262,119 @@ export function FinalResultsScreen() {
               />
             </section>
 
-            {/* Per-question breakdown */}
-            <section
-              aria-label="Per-question breakdown"
-              className="mt-10"
-            >
-              <div className="mb-4 flex items-center gap-2">
-                <ListOrdered className="h-5 w-5 text-primary" />
-                <h2 className="text-xl font-semibold tracking-tight">
-                  Question breakdown
-                </h2>
-              </div>
+            {/* Tab view: Leaderboard + Analytics */}
+            <section className="mt-10">
+              <Tabs defaultValue="leaderboard" className="w-full">
+                <TabsList className="h-11 w-full justify-start gap-1 overflow-x-auto">
+                  <TabsTrigger value="leaderboard" className="gap-1.5 px-4">
+                    <Trophy className="h-4 w-4" />
+                    Leaderboard
+                  </TabsTrigger>
+                  <TabsTrigger value="analytics" className="gap-1.5 px-4">
+                    <BarChart3 className="h-4 w-4" />
+                    Analytics
+                  </TabsTrigger>
+                </TabsList>
 
-              {results.questions.length === 0 ? (
-                <Card className="rounded-2xl border-dashed">
-                  <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                    No questions on this activity.
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid gap-5">
-                  {results.questions.map((q, idx) => {
-                    const labels = labelsByQ[q.id] ?? {
-                      A: 'Option A',
-                      B: 'Option B',
-                      C: 'Option C',
-                      D: 'Option D',
-                    }
-                    const correctPct =
-                      q.distribution.total > 0
-                        ? Math.round(
-                            (q.distribution[q.correctOption] /
-                              q.distribution.total) *
-                              100,
-                          )
-                        : 0
-                    return (
-                      <motion.div
-                        key={q.id}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.35, delay: idx * 0.05 }}
-                      >
-                        <Card className="rounded-2xl">
-                          <CardHeader className="gap-2">
-                            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary">
-                                Q{q.questionOrder}
-                              </span>
-                              <span>{q.distribution.total} responses</span>
-                              <span className="text-muted-foreground/60">·</span>
-                              <span className="text-emerald-600 dark:text-emerald-400">
-                                {correctPct}% correct
-                              </span>
-                            </div>
-                            <CardTitle className="text-lg leading-snug sm:text-xl">
-                              {q.questionText}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <ResultBars
-                              distribution={q.distribution}
-                              labels={labels as Partial<Record<OptionKey, string>>}
-                              correctOption={q.correctOption}
-                              variant="bars"
-                            />
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    )
-                  })}
-                </div>
-              )}
+                {/* Tab 1: Leaderboard */}
+                <TabsContent value="leaderboard" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Trophy className="h-5 w-5 text-primary" />
+                        Final Leaderboard
+                      </CardTitle>
+                      <CardDescription>
+                        Ranked by total score (1000 base per correct answer + time bonus).
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <LeaderboardChart
+                        entries={leaderboardEntries}
+                        showScoreBreakdown
+                      />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Tab 2: Analytics (per-question breakdown) */}
+                <TabsContent value="analytics" className="mt-6">
+                  <div className="mb-4 flex items-center gap-2">
+                    <ListOrdered className="h-5 w-5 text-primary" />
+                    <h2 className="text-xl font-semibold tracking-tight">
+                      Question breakdown
+                    </h2>
+                  </div>
+
+                  {results.questions.length === 0 ? (
+                    <Card className="border-dashed">
+                      <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                        No questions on this activity.
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="grid gap-5">
+                      {results.questions.map((q, idx) => {
+                        const labels = labelsByQ[q.id] ?? {
+                          A: 'Option A',
+                          B: 'Option B',
+                          C: 'Option C',
+                          D: 'Option D',
+                        }
+                        const correctPct =
+                          q.distribution.total > 0
+                            ? Math.round(
+                                (q.distribution[q.correctOption] /
+                                  q.distribution.total) *
+                                  100,
+                              )
+                            : 0
+                        return (
+                          <motion.div
+                            key={q.id}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.35, delay: idx * 0.05 }}
+                          >
+                            <Card>
+                              <CardHeader className="gap-2">
+                                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                  <span className="inline-flex h-6 w-6 items-center justify-center bg-primary/10 text-primary">
+                                    Q{q.questionOrder}
+                                  </span>
+                                  <span>{q.distribution.total} responses</span>
+                                  <span className="text-muted-foreground/60">·</span>
+                                  <span className="text-primary">
+                                    {correctPct}% correct
+                                  </span>
+                                </div>
+                                <CardTitle className="text-lg leading-snug sm:text-xl">
+                                  {q.questionText}
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <ResultBars
+                                  distribution={q.distribution}
+                                  labels={labels as Partial<Record<OptionKey, string>>}
+                                  correctOption={q.correctOption}
+                                  variant="bars"
+                                />
+                              </CardContent>
+                            </Card>
+                          </motion.div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
             </section>
 
             <div className="mt-10 flex justify-center">
               <Button
                 variant="outline"
                 onClick={() => navigate('admin-dashboard')}
-                className="h-11 rounded-xl px-6"
+                className="h-11 px-6"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back to dashboard
@@ -362,8 +403,8 @@ function ResultsHeader({
   onNavigateAdmins: () => void
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-border/40 bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 glass-bar backdrop-blur-md backdrop-saturate-150">
+      <div className="flex h-16 w-full items-center justify-between px-4 sm:px-8 lg:px-12 xl:px-16">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"

@@ -9,10 +9,10 @@ import {
   Users,
   Zap,
   ShieldCheck,
+  ArrowRight,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { AppFooter } from '@/components/shared/app-footer'
-import { ThemeToggle } from '@/components/shared/theme-toggle'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -29,24 +29,24 @@ const FEATURES = [
     title: 'Create',
     description:
       'Draft multiple-choice questions, mark the correct answer, set per-question time limits.',
-    accent: 'text-chart-1',
-    bg: 'bg-chart-1/10',
+    accent: 'text-primary',
+    bg: 'bg-primary/10',
   },
   {
     icon: Radio,
     title: 'Go live',
     description:
       'Publish and share a 6-digit access code. Participants join in seconds — no app needed.',
-    accent: 'text-chart-2',
-    bg: 'bg-chart-2/10',
+    accent: 'text-primary',
+    bg: 'bg-primary/10',
   },
   {
     icon: BarChart3,
     title: 'See results',
     description:
       'Real-time answer distribution, reveal the correct option, and review final scores.',
-    accent: 'text-chart-3',
-    bg: 'bg-chart-3/10',
+    accent: 'text-primary',
+    bg: 'bg-primary/10',
   },
 ] as const
 
@@ -76,20 +76,20 @@ export function LandingScreen() {
 
   return (
     <div className="flex min-h-screen flex-col bg-stage">
-      {/* Top bar — logo on the left, theme switcher + Admin on the right */}
+      {/* Top bar — logo on the left, Admin on the right */}
       <motion.header
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: EASE }}
-        className="sticky top-0 z-30 border-b border-border/40 bg-background/60 backdrop-blur-md"
+        className="sticky top-0 z-30 glass-bar backdrop-blur-md backdrop-saturate-150"
       >
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="flex h-16 w-full items-center justify-between px-4 sm:px-8 lg:px-12 xl:px-16">
           <motion.div
-            className="flex items-center gap-2.5"
+            className="group flex items-center gap-2.5"
             whileHover={{ scale: 1.02 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
           >
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <div className="relative flex h-9 w-9 items-center justify-center bg-primary text-primary-foreground shadow-[0_0_20px_-4px_oklch(0.69_0.27_350_/_0.6)] transition-all group-hover:shadow-[0_0_28px_-4px_oklch(0.69_0.27_350_/_0.8)]">
               <motion.span
                 animate={{ rotate: [0, 8, -8, 0] }}
                 transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
@@ -103,20 +103,13 @@ export function LandingScreen() {
 
           <div className="flex items-center gap-2">
             <motion.div
-              whileHover={{ scale: 1.08, rotate: 15 }}
-              whileTap={{ scale: 0.92 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-            >
-              <ThemeToggle className="h-10 w-10 rounded-xl" />
-            </motion.div>
-            <motion.div
               whileHover={{ y: -2 }}
               whileTap={{ y: 0, scale: 0.98 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
             >
               <Button
                 size="sm"
-                className="h-10 gap-2 rounded-xl px-4 text-sm"
+                className="h-10 gap-2 px-4 text-sm"
                 onClick={() =>
                   navigate(admin ? 'admin-dashboard' : 'admin-login')
                 }
@@ -130,10 +123,10 @@ export function LandingScreen() {
       </motion.header>
 
       <main className="flex-1">
-        {/* Hero */}
+        {/* Hero — full width */}
         <section
           aria-labelledby="hero-title"
-          className="mx-auto max-w-5xl px-4 py-16 text-center sm:px-6 sm:py-24 lg:px-8"
+          className="w-full px-4 py-20 text-center sm:px-8 sm:py-28 lg:px-12 xl:px-16"
         >
           <motion.div
             variants={staggerContainer}
@@ -143,7 +136,7 @@ export function LandingScreen() {
             <motion.div variants={fadeUp}>
               <Badge
                 variant="secondary"
-                className="mb-6 gap-1.5 rounded-full border-primary/20 bg-primary/10 px-3 py-1 text-primary"
+                className="mb-6 gap-1.5 border-primary/30 bg-primary/10 px-3 py-1 text-primary"
               >
                 <motion.span
                   animate={{ scale: [1, 1.15, 1] }}
@@ -159,7 +152,7 @@ export function LandingScreen() {
             <motion.h1
               variants={fadeUp}
               id="hero-title"
-              className="text-balance text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl"
+              className="mx-auto max-w-4xl text-balance text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl xl:text-7xl"
             >
               Run live quizzes your{' '}
               <span className="gradient-text">audience will love</span>
@@ -187,11 +180,12 @@ export function LandingScreen() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="h-12 w-full rounded-xl px-8 text-base sm:w-auto"
+                  className="h-12 w-full px-8 text-base sm:w-auto"
                   onClick={() => navigate('participant-join')}
                 >
                   <Users className="h-5 w-5" />
                   Join a quiz
+                  <ArrowRight className="h-4 w-4" />
                 </Button>
               </motion.div>
             </motion.div>
@@ -205,17 +199,17 @@ export function LandingScreen() {
                 transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
                 className="inline-flex"
               >
-                <Zap className="h-3.5 w-3.5 text-chart-3" />
+                <Zap className="h-3.5 w-3.5 text-primary" />
               </motion.span>
               <span>No sign-up needed to play — just a 6-digit code.</span>
             </motion.div>
           </motion.div>
         </section>
 
-        {/* Feature cards */}
+        {/* Feature cards — full width */}
         <section
           aria-label="Features"
-          className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 lg:px-8"
+          className="w-full px-4 pb-20 sm:px-8 lg:px-12 xl:px-16"
         >
           <motion.div
             variants={staggerContainer}
@@ -224,25 +218,28 @@ export function LandingScreen() {
             viewport={{ once: true, amount: 0.2 }}
             className="grid gap-6 sm:grid-cols-3"
           >
-            {FEATURES.map((feature) => {
+            {FEATURES.map((feature, i) => {
               const Icon = feature.icon
               return (
                 <motion.div key={feature.title} variants={fadeUp}>
                   <motion.div
-                    whileHover={{ y: -4 }}
+                    whileHover={{ y: -6 }}
                     transition={{ duration: 0.25, ease: 'easeOut' }}
                     className="h-full"
                   >
-                    <Card className="h-full rounded-2xl transition-shadow hover:shadow-md">
+                    <Card className="glow-border group h-full overflow-hidden">
                       <CardHeader>
                         <motion.div
-                          whileHover={{ scale: 1.08, rotate: -3 }}
+                          whileHover={{ scale: 1.1, rotate: -4 }}
                           transition={{ duration: 0.25, ease: 'easeOut' }}
-                          className={`mb-2 flex h-12 w-12 items-center justify-center rounded-xl ${feature.bg} ${feature.accent}`}
+                          className={`mb-2 flex h-12 w-12 items-center justify-center ${feature.bg} ${feature.accent} shadow-[0_0_20px_-6px_oklch(0.69_0.27_350_/_0.4)]`}
                         >
                           <Icon className="h-6 w-6" />
                         </motion.div>
-                        <CardTitle className="text-xl">{feature.title}</CardTitle>
+                        <CardTitle className="text-xl">
+                          <span className="font-mono text-xs text-primary/60 mr-2">0{i + 1}</span>
+                          {feature.title}
+                        </CardTitle>
                         <CardDescription className="text-sm leading-relaxed">
                           {feature.description}
                         </CardDescription>
@@ -256,17 +253,17 @@ export function LandingScreen() {
           </motion.div>
         </section>
 
-        {/* How it works strip */}
+        {/* How it works strip — full width glass */}
         <section
           aria-label="How it works"
-          className="border-y border-border/40 bg-muted/20"
+          className="border-y border-primary/10 bg-white/[0.02] backdrop-blur-sm"
         >
           <motion.div
             variants={staggerContainer}
             initial="hidden"
             whileInView="show"
             viewport={{ once: true, amount: 0.3 }}
-            className="mx-auto grid max-w-6xl gap-6 px-4 py-12 sm:grid-cols-3 sm:px-6 lg:px-8"
+            className="grid w-full gap-6 px-4 py-14 sm:grid-cols-3 sm:px-8 lg:px-12 xl:px-16"
           >
             {[
               { n: '01', t: 'Author questions', d: 'Add MCQs with 4 options and a correct answer.' },
@@ -280,10 +277,10 @@ export function LandingScreen() {
                 transition={{ duration: 0.2, ease: 'easeOut' }}
                 className="text-center sm:text-left"
               >
-                <div className="font-mono text-sm font-semibold text-primary">
+                <div className="font-mono text-2xl font-bold text-primary/80">
                   {step.n}
                 </div>
-                <div className="mt-1 text-base font-semibold">{step.t}</div>
+                <div className="mt-2 text-base font-semibold">{step.t}</div>
                 <div className="mt-1 text-sm text-muted-foreground">
                   {step.d}
                 </div>

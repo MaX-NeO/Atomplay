@@ -63,7 +63,7 @@ export function ResultBars({
                 <span
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold border ${
                     isCorrect
-                      ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      ? 'border-primary/50 bg-primary/10 text-primary'
                       : `border-border bg-muted ${OPTION_TEXT_COLORS[key]}`
                   }`}
                 >
@@ -71,12 +71,12 @@ export function ResultBars({
                 </span>
                 <span className="truncate text-sm font-medium sm:text-base">{label}</span>
                 {isCorrect && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                     <Check className="h-3 w-3" /> Correct
                   </span>
                 )}
                 {isSelected && !isCorrect && (
-                  <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                  <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                     Your pick
                   </span>
                 )}
@@ -89,8 +89,8 @@ export function ResultBars({
             <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
               <motion.div
                 className={`h-full rounded-full ${
-                  isCorrect ? 'bg-emerald-500' : OPTION_COLORS[key]
-                } ${isSelected && !isCorrect ? 'ring-2 ring-amber-400/60 ring-offset-1 ring-offset-background' : ''}`}
+                  isCorrect ? 'bg-primary' : OPTION_COLORS[key]
+                } ${isSelected && !isCorrect ? 'ring-2 ring-primary/60 ring-offset-1 ring-offset-background' : ''}`}
                 initial={{ width: 0 }}
                 animate={{ width: `${pct}%` }}
                 transition={{ duration: 0.6, ease: 'easeOut' }}

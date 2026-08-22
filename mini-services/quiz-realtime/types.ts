@@ -74,3 +74,23 @@ export interface ParticipantKickedPayload {
   sessionId: string
   count: number
 }
+
+// A single entry in the leaderboard (one participant's cumulative score)
+export interface LeaderboardEntry {
+  participantId: string
+  displayName: string
+  uoid: string | null
+  totalScore: number
+  correctAnswers: number
+  answeredQuestions: number
+  rank: number
+}
+
+// Socket payload for showing a leaderboard
+export interface LeaderboardShownPayload {
+  activityId: string
+  leaderboardId: string
+  title: string
+  entries: LeaderboardEntry[]
+  isDefault: boolean
+}

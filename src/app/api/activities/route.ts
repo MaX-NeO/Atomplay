@@ -54,7 +54,15 @@ export async function POST(req: Request) {
       description,
       status: 'DRAFT',
       createdBy: admin.id,
+      // Auto-create the default final leaderboard (always last, can't be deleted)
+      leaderboardSections: {
+        create: [{ isDefault: true, afterQuestionOrder: null }],
+      },
     },
+    include: { leaderboardSections: true, questions: true },
   })
-  return NextResponse.json({ activity: toActivityDTO(created) }, { status: 201 })
+  return NextResponse.json(
+    { activity: toActivityDTO(created, created.questions, created.leaderboardSections) },
+    { status: 201 },
+  )
 }

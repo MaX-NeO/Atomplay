@@ -288,16 +288,16 @@ export function AdminManagementScreen() {
   if (!admin || admin.role !== 'SUPER_ADMIN') return null
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-stage-app">
       {/* Top nav */}
-      <header className="sticky top-0 z-30 border-b border-border/40 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 glass-bar backdrop-blur-md backdrop-saturate-150">
+        <div className="flex h-16 w-full items-center justify-between px-4 sm:px-8 lg:px-12 xl:px-16">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate('admin-dashboard')}
-              className="h-10 gap-1.5 rounded-xl px-2 text-muted-foreground"
+              className="h-10 gap-1.5 px-2 text-muted-foreground hover:text-primary"
               aria-label="Back to dashboard"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -305,7 +305,7 @@ export function AdminManagementScreen() {
             </Button>
             <div className="hidden h-6 w-px bg-border sm:block" />
             <div className="hidden items-center gap-2.5 sm:flex">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <div className="flex h-9 w-9 items-center justify-center bg-primary/15 text-primary">
                 <Sparkles className="h-5 w-5" />
               </div>
               <span className="text-lg font-semibold tracking-tight">Atom Play</span>
@@ -361,7 +361,7 @@ export function AdminManagementScreen() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="w-full flex-1 px-4 py-8 sm:px-8 lg:px-12 xl:px-16">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">

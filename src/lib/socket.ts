@@ -7,20 +7,35 @@ let socket: Socket | null = null
 /**
  * Connect to the realtime socket service.
  *
- * IMPORTANT (gateway rule): the browser must connect to the SAME origin and pass
- * `XTransformPort=3003` as a query param. Caddy then forwards to the mini-service.
- * We never hardcode `http://localhost:3003` here.
+ * In PRODUCTION: connects to the Render mini-service URL (NEXT_PUBLIC_REALTIME_URL).
+ * In DEVELOPMENT (sandbox): connects via the Caddy gateway using ?XTransformPort=3003.
  */
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io('/?XTransformPort=3003', {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 800,
-      reconnectionDelayMax: 5000,
-      timeout: 10000,
-    })
+    const isProduction = process.env.NODE_ENV === 'production'
+    const realtimeUrl = process.env.NEXT_PUBLIC_REALTIME_URL
+
+    if (isProduction && realtimeUrl) {
+      // Production: connect directly to the Render mini-service
+      socket = io(realtimeUrl, {
+        transports: ['polling', 'websocket'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 800,
+        reconnectionDelayMax: 5000,
+        timeout: 10000,
+      })
+    } else {
+      // Development: sandbox Caddy gateway pattern
+      socket = io('/?XTransformPort=3003', {
+        transports: ['polling', 'websocket'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 800,
+        reconnectionDelayMax: 5000,
+        timeout: 10000,
+      })
+    }
 
     if (typeof window !== 'undefined') {
       socket.on('connect', () => {

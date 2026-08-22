@@ -25,6 +25,16 @@ export interface QuestionDTO {
   timeLimit: number
 }
 
+export interface LeaderboardSectionDTO {
+  id: string
+  activityId: string
+  afterQuestionOrder: number | null // null = default final leaderboard
+  isDefault: boolean
+  title: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ActivityDTO {
   id: string
   title: string
@@ -32,6 +42,7 @@ export interface ActivityDTO {
   status: ActivityStatus
   accessCode: string | null
   currentQuestionId: string | null
+  currentLeaderboardId: string | null
   questionStartedAt: string | null
   questionEndsAt: string | null
   startedAt: string | null
@@ -39,6 +50,7 @@ export interface ActivityDTO {
   createdAt: string
   updatedAt: string
   questions?: QuestionDTO[]
+  leaderboardSections?: LeaderboardSectionDTO[]
   createdBy: string
 }
 
@@ -143,6 +155,13 @@ export interface ActivityStateResponse {
     correctOption: OptionKey
     distribution: AnswerDistribution
   } | null
+  // when LIVE & a leaderboard is being shown (currentQuestionId === null):
+  currentLeaderboard?: {
+    leaderboardId: string
+    title: string
+    isDefault: boolean
+    entries: LeaderboardEntry[]
+  } | null
 }
 
 export interface ActivityResultsResponse {
@@ -160,4 +179,24 @@ export interface ActivityResultsResponse {
     correctOption: OptionKey
     distribution: AnswerDistribution
   }[]
+}
+
+// A single entry in the leaderboard (one participant's cumulative score)
+export interface LeaderboardEntry {
+  participantId: string
+  displayName: string
+  uoid: string | null
+  totalScore: number
+  correctAnswers: number
+  answeredQuestions: number
+  rank: number
+}
+
+// Socket payload for showing a leaderboard
+export interface LeaderboardShownPayload {
+  activityId: string
+  leaderboardId: string
+  title: string
+  entries: LeaderboardEntry[]
+  isDefault: boolean
 }

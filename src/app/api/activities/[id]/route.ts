@@ -14,13 +14,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     where: { id, createdBy: admin.id },
     include: {
       questions: { orderBy: { questionOrder: 'asc' } },
+      leaderboardSections: { orderBy: { afterQuestionOrder: 'asc' } },
     },
   })
   if (!activity) {
     return NextResponse.json({ error: 'Activity not found' }, { status: 404 })
   }
 
-  return NextResponse.json({ activity: toActivityDTO(activity, activity.questions) })
+  return NextResponse.json({
+    activity: toActivityDTO(activity, activity.questions, activity.leaderboardSections),
+  })
 }
 
 // PATCH /api/activities/[id] — update title/description.

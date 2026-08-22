@@ -32,7 +32,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const source = await db.activity.findFirst({
     where: { id, createdBy: admin.id },
-    include: { questions: { orderBy: { questionOrder: 'asc' } } },
+    include: {
+      questions: { orderBy: { questionOrder: 'asc' } },
+      leaderboardSections: true,
+    },
   })
   if (!source) {
     return NextResponse.json({ error: 'Activity not found' }, { status: 404 })
@@ -73,13 +76,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           timeLimit: q.timeLimit,
         })),
       },
+      leaderboardSections: {
+        create: source.leaderboardSections.map((ls) => ({
+          afterQuestionOrder: ls.afterQuestionOrder,
+          isDefault: ls.isDefault,
+          title: ls.title,
+        })),
+      },
     },
-    include: { questions: { orderBy: { questionOrder: 'asc' } } },
+    include: {
+      questions: { orderBy: { questionOrder: 'asc' } },
+      leaderboardSections: true,
+    },
   })
 
   return NextResponse.json(
     {
-      activity: toActivityDTO(created, created.questions),
+      activity: toActivityDTO(created, created.questions, created.leaderboardSections),
       warning:
         publishImmediately && !canPublish
           ? 'Source activity had no questions — clone was created as a DRAFT instead of being published.'

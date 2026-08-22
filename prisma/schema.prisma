@@ -64,6 +64,7 @@ model Activity {
   status            ActivityStatus @default(DRAFT)
   accessCode        String?        @unique // 6-digit code, set on publish
   currentQuestionId String?        // currently active question id (when LIVE)
+  currentLeaderboardId String?     // currently shown leaderboard id (when LIVE, leaderboard phase)
   questionStartedAt DateTime?      // server-side timestamp when current question started
   questionEndsAt    DateTime?      // server-side timestamp when current question must end
   createdBy         String
@@ -76,6 +77,7 @@ model Activity {
   questions   Question[]
   participants Participant[]
   answers     Answer[]
+  leaderboardSections LeaderboardSection[]
 
   @@index([accessCode])                         // lookup by access code (join flow)
   @@index([status])                             // filter by status (dashboard tabs, auto-expire ticker)
@@ -130,6 +132,8 @@ model Answer {
   participantId  String
   selectedOption OptionKey
   isCorrect      Boolean
+  score          Int       @default(0) // 1000 base for correct + time bonus; 0 for incorrect
+  timeTakenMs    Int?      // how long the participant took to answer (ms from question start)
   answeredAt     DateTime  @default(now())
 
   activity    Activity    @relation(fields: [activityId], references: [id], onDelete: Cascade)
@@ -140,4 +144,33 @@ model Answer {
   @@index([questionId])                // compute distribution per question
   @@index([activityId, participantId])  // compute per-participant score for final results
   @@map("answers")
+}
+
+// ─── Leaderboard Section ───────────────────────────────────────────────────
+// Represents a leaderboard break in the activity sequence. Interleaved with
+// questions: each leaderboard (except the default final one) is positioned
+// AFTER a specific question (identified by its questionOrder).
+//
+// `afterQuestionOrder`:
+//   - null  → the DEFAULT final leaderboard (always last, one per activity,
+//             cannot be edited/deleted/moved)
+//   - Int N → appears after the question with questionOrder == N
+//
+// The unique constraint on (activityId, afterQuestionOrder) prevents two
+// leaderboards from occupying the same position — i.e. no two leaderboards
+// can be adjacent (each is tied to a distinct question).
+model LeaderboardSection {
+  id                String   @id @default(uuid())
+  activityId        String
+  afterQuestionOrder Int?    // null = default final; N = after question with questionOrder N
+  isDefault         Boolean  @default(false)
+  title             String?  // optional custom title (null → "Leaderboard")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, afterQuestionOrder]) // one leaderboard per position
+  @@index([activityId])
+  @@map("leaderboard_sections")
 }

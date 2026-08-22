@@ -1,0 +1,24 @@
+# Render Blueprint for Atom Play quiz-realtime service
+# Docs: https://render.com/docs/blueprint-spec
+# Deploy via: render blueprint deploy (or connect repo in dashboard)
+
+services:
+  - type: web
+    name: atomplay-quiz-realtime
+    runtime: node
+    plan: free  # upgrade to "starter" for production (always-on)
+    region: singapore  # choose nearest to your Neon DB region
+    branch: main
+    rootDir: mini-services/quiz-realtime
+    buildCommand: npm install && npx prisma generate --schema=../../prisma/schema.prisma
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # set manually in Render dashboard
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      # PORT is set automatically by Render — do not set it here

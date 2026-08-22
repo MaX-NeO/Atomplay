@@ -50,8 +50,27 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen overflow-x-hidden`}
       >
+        {/* Decorative animated background orbs — fixed, sit behind all content */}
+        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+          <div
+            className="absolute -top-40 -left-32 h-[520px] w-[520px] animate-float-slow opacity-70 blur-[90px]"
+            style={{ background: "radial-gradient(circle, oklch(0.69 0.27 350 / 0.5), transparent 70%)" }}
+          />
+          <div
+            className="absolute top-1/3 -right-40 h-[560px] w-[560px] animate-float opacity-55 blur-[100px]"
+            style={{ background: "radial-gradient(circle, oklch(0.55 0.26 345 / 0.45), transparent 70%)" }}
+          />
+          <div
+            className="absolute -bottom-48 left-1/3 h-[480px] w-[480px] animate-float-slow opacity-45 blur-[90px]"
+            style={{ background: "radial-gradient(circle, oklch(0.65 0.24 355 / 0.4), transparent 70%)" }}
+          />
+          <div
+            className="absolute top-1/2 left-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 animate-float opacity-30 blur-[100px]"
+            style={{ background: "radial-gradient(circle, oklch(0.72 0.25 355 / 0.35), transparent 70%)" }}
+          />
+        </div>
         <ThemeProvider>
           {children}
           <Toaster />

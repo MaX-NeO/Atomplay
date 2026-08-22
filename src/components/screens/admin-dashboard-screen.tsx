@@ -99,10 +99,10 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 function StatusBadge({ status }: { status: ActivityStatus }) {
   if (status === 'LIVE') {
     return (
-      <Badge className="gap-1.5 rounded-full border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-400">
+      <Badge className="gap-1.5 rounded-full border-primary/30 bg-primary/15 text-primary">
         <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500/80" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/80" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
         </span>
         LIVE
       </Badge>
@@ -110,7 +110,7 @@ function StatusBadge({ status }: { status: ActivityStatus }) {
   }
   if (status === 'PUBLISHED') {
     return (
-      <Badge className="gap-1.5 rounded-full border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+      <Badge className="gap-1.5 rounded-full border-primary/30 bg-primary/15 text-primary">
         <CircleDot className="h-3 w-3" />
         Published
       </Badge>
@@ -352,7 +352,7 @@ export function AdminDashboardScreen() {
 
   if (booting) {
     return (
-      <div className="flex min-h-screen flex-col bg-background">
+      <div className="flex min-h-screen flex-col bg-stage-app">
         <main className="flex flex-1 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </main>
@@ -364,23 +364,22 @@ export function AdminDashboardScreen() {
   if (!admin) return null
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-stage-app">
       {/* Top nav */}
-      <header className="sticky top-0 z-30 border-b border-border/40 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 glass-bar backdrop-blur-md backdrop-saturate-150">
+        <div className="flex h-16 w-full items-center justify-between px-4 sm:px-8 lg:px-12 xl:px-16">
           <button
             type="button"
             onClick={() => navigate('landing')}
-            className="flex items-center gap-2.5"
+            className="group flex items-center gap-2.5"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <div className="flex h-9 w-9 items-center justify-center bg-primary/15 text-primary transition-all group-hover:bg-primary/25 group-hover:shadow-[0_0_18px_-4px_oklch(0.69_0.27_350_/_0.5)]">
               <Sparkles className="h-5 w-5" />
             </div>
             <span className="text-lg font-semibold tracking-tight">Atom Play</span>
           </button>
 
           <div className="flex items-center gap-2">
-            <ThemeToggle className="h-10 w-10 rounded-xl" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -431,7 +430,7 @@ export function AdminDashboardScreen() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="w-full flex-1 px-4 py-8 sm:px-8 lg:px-12 xl:px-16">
         {/* Greeting + create */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -828,7 +827,7 @@ export function AdminDashboardScreen() {
         <DialogContent className="rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <RotateCcw className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <RotateCcw className="h-5 w-5 text-primary" />
               Reset completed activity
             </DialogTitle>
             <DialogDescription>
@@ -861,7 +860,7 @@ export function AdminDashboardScreen() {
                 <RadioGroupItem value="keep" id="reset-keep" className="mt-0.5" />
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 text-sm font-medium">
-                    <KeyRound className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <KeyRound className="h-3.5 w-3.5 text-primary" />
                     Keep the same access code
                     {resetTarget?.accessCode && (
                       <span className="font-mono text-xs text-muted-foreground">
@@ -909,7 +908,7 @@ export function AdminDashboardScreen() {
             <Button
               onClick={handleReset}
               disabled={resetting}
-              className="rounded-lg bg-amber-600 text-white hover:bg-amber-600/90"
+              className="rounded-lg bg-primary text-white hover:bg-primary/90"
             >
               {resetting ? (
                 <>
@@ -948,9 +947,9 @@ function StatCard({
   loading: boolean
 }) {
   return (
-    <Card className="rounded-2xl">
+    <Card>
       <CardContent className="flex items-center gap-4 py-5">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${bg} ${tint}`}>
+        <div className={`flex h-12 w-12 items-center justify-center ${bg} ${tint} shadow-[0_0_20px_-6px_oklch(0.69_0.27_350_/_0.35)]`}>
           <Icon className="h-6 w-6" />
         </div>
         <div className="min-w-0">
@@ -990,7 +989,7 @@ function ActivityCard({
   const qCount = activity._count?.questions ?? activity.questionCount ?? 0
   const pCount = activity._count?.participants ?? activity.participantCount ?? 0
   return (
-    <Card className="rounded-2xl transition-shadow hover:shadow-md">
+    <Card>
       <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -1134,7 +1133,7 @@ function ActivityCard({
                 variant="outline"
                 size="sm"
                 onClick={onReset}
-                className="h-9 rounded-lg text-amber-600 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400"
+                className="h-9 rounded-lg text-primary hover:bg-primary/10 hover:text-primary"
                 aria-label={`Reset ${activity.title}`}
                 title="Reset to present again"
               >

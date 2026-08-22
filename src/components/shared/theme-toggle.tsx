@@ -15,6 +15,6 @@
  * be touched; if you want to remove the call sites entirely, grep for
  * `<ThemeToggle` and delete each usage.
  */
-export function ThemeToggle() {
+export function ThemeToggle(_props?: { className?: string; iconClassName?: string }) {
   return null
 }

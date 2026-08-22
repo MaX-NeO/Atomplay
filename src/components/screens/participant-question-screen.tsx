@@ -6,12 +6,15 @@ import { api, ApiError } from '@/lib/api-client'
 import { getSocket } from '@/lib/socket'
 import { useCountdown, formatTime } from '@/hooks/use-countdown'
 import { ResultBars } from '@/components/shared/result-bars'
+import { LeaderboardChart } from '@/components/shared/leaderboard-chart'
 import { AppFooter } from '@/components/shared/app-footer'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Check, Clock, Loader2, Radio, X } from 'lucide-react'
+import { Check, Clock, Loader2, Radio, Trophy, X } from 'lucide-react'
 import type {
   ActivityStateResponse,
   AnswerDistribution,
+  LeaderboardEntry,
+  LeaderboardShownPayload,
   OptionKey,
   QuestionEndedPayload,
   QuestionStartedPayload,
@@ -19,7 +22,7 @@ import type {
   ParticipantKickedPayload,
 } from '@/lib/types'
 
-type Phase = 'connecting' | 'answering' | 'submitted' | 'reveal'
+type Phase = 'connecting' | 'answering' | 'submitted' | 'reveal' | 'leaderboard'
 
 interface LiveQuestion {
   questionId: string
@@ -32,12 +35,12 @@ interface LiveQuestion {
 
 const OPTION_COLORS: Record<
   OptionKey,
-  { borderHover: string; badge: string }
+  { borderHover: string; badge: string; glow: string }
 > = {
-  A: { borderHover: 'hover:border-chart-1/60', badge: 'bg-chart-1/15 text-chart-1' },
-  B: { borderHover: 'hover:border-chart-2/60', badge: 'bg-chart-2/15 text-chart-2' },
-  C: { borderHover: 'hover:border-chart-3/60', badge: 'bg-chart-3/15 text-chart-3' },
-  D: { borderHover: 'hover:border-chart-4/60', badge: 'bg-chart-4/15 text-chart-4' },
+  A: { borderHover: 'hover:border-chart-1/70', badge: 'bg-chart-1/20 text-chart-1', glow: '0 0 20px -6px oklch(0.72 0.28 350 / 0.4)' },
+  B: { borderHover: 'hover:border-chart-2/70', badge: 'bg-chart-2/20 text-chart-2', glow: '0 0 20px -6px oklch(0.82 0.17 195 / 0.4)' },
+  C: { borderHover: 'hover:border-chart-3/70', badge: 'bg-chart-3/20 text-chart-3', glow: '0 0 20px -6px oklch(0.82 0.24 140 / 0.4)' },
+  D: { borderHover: 'hover:border-chart-4/70', badge: 'bg-chart-4/20 text-chart-4', glow: '0 0 20px -6px oklch(0.80 0.19 75 / 0.4)' },
 }
 
 function labelsFromQuestion(q: LiveQuestion | null): Partial<Record<OptionKey, string>> {
@@ -58,6 +61,14 @@ export function ParticipantQuestionScreen() {
     correctOption: OptionKey
     distribution: AnswerDistribution
   } | null>(null)
+  // Leaderboard phase state. `leaderboard` holds the currently-shown
+  // leaderboard; `prevLeaderboard` holds the previously-shown one so the
+  // LeaderboardChart can animate from old positions to new ones.
+  const [leaderboard, setLeaderboard] = useState<{
+    title: string
+    entries: LeaderboardEntry[]
+  } | null>(null)
+  const [prevLeaderboard, setPrevLeaderboard] = useState<typeof leaderboard>(null)
 
   // Guard
   useEffect(() => {
@@ -82,6 +93,15 @@ export function ParticipantQuestionScreen() {
     setReveal({ correctOption: p.correctOption, distribution: p.distribution })
     setPhase('reveal')
   }, [])
+
+  // When the host broadcasts a leaderboard, stash the entries (+ previous
+  // entries for animation) and switch to the leaderboard phase. The
+  // LeaderboardChart handles the rank-change spring animation internally.
+  const onLeaderboardShown = useCallback((p: LeaderboardShownPayload) => {
+    setPrevLeaderboard(leaderboard)
+    setLeaderboard({ title: p.title, entries: p.entries })
+    setPhase('leaderboard')
+  }, [leaderboard])
 
   // REST sync on mount
   useEffect(() => {
@@ -122,6 +142,16 @@ export function ParticipantQuestionScreen() {
           setPhase('reveal')
           return
         }
+        if (state.currentLeaderboard) {
+          // LIVE & showing a leaderboard — show it directly so a late joiner
+          // (or someone who just reloaded) sees the same view as everyone else.
+          setLeaderboard({
+            title: state.currentLeaderboard.title,
+            entries: state.currentLeaderboard.entries,
+          })
+          setPhase('leaderboard')
+          return
+        }
         // LIVE but no question / reveal — go back to lobby.
         navigate('participant-lobby')
       })
@@ -148,6 +178,7 @@ export function ParticipantQuestionScreen() {
     })
     socket.on('question_started', handleQuestionStarted)
     socket.on('question_ended', handleQuestionEnded)
+    socket.on('leaderboard_shown', onLeaderboardShown)
     socket.on('activity_completed', () => navigate('participant-completed'))
     socket.on('activity_reset', (_p: ActivityResetPayload) => {
       // Host aborted the session and reset the activity to start mode — our
@@ -167,11 +198,12 @@ export function ParticipantQuestionScreen() {
     return () => {
       socket.off('question_started', handleQuestionStarted)
       socket.off('question_ended', handleQuestionEnded)
+      socket.off('leaderboard_shown', onLeaderboardShown)
       socket.off('activity_completed')
       socket.off('activity_reset')
       socket.off('participant_kicked')
     }
-  }, [participant, navigate, handleQuestionStarted, handleQuestionEnded, setParticipant])
+  }, [participant, navigate, handleQuestionStarted, handleQuestionEnded, onLeaderboardShown, setParticipant])
 
   function submitAnswer(option: OptionKey) {
     if (!participant || !current || phase !== 'answering') return
@@ -229,7 +261,7 @@ export function ParticipantQuestionScreen() {
                     transition={{ duration: 0.6, repeat: timeLow ? Infinity : 0 }}
                     className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold tabular-nums ${
                       timeLow
-                        ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                        ? 'bg-destructive/15 text-destructive'
                         : 'bg-muted text-foreground'
                     }`}
                   >
@@ -252,8 +284,10 @@ export function ParticipantQuestionScreen() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.05 * idx, duration: 0.25 }}
                         whileTap={{ scale: 0.97 }}
+                        whileHover={{ scale: 1.02 }}
                         onClick={() => submitAnswer(opt.key)}
-                        className={`flex min-h-20 items-center gap-3 rounded-2xl border-2 bg-card px-4 text-left transition-colors hover:border-primary/60 hover:bg-primary/5 ${colorClasses.borderHover}`}
+                        className={`flex min-h-20 items-center gap-3 border-2 bg-card px-4 text-left transition-colors ${colorClasses.borderHover}`}
+                        style={{ boxShadow: colorClasses.glow }}
                         aria-label={`Answer ${opt.key}: ${opt.label}`}
                       >
                         <span
@@ -286,7 +320,7 @@ export function ParticipantQuestionScreen() {
                   initial={{ scale: 0.5, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 220, damping: 14 }}
-                  className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500"
+                  className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-primary"
                 >
                   <Check className="h-10 w-10" />
                 </motion.div>
@@ -300,6 +334,35 @@ export function ParticipantQuestionScreen() {
                   Waiting for the host to reveal the results…
                 </p>
                 <Loader2 className="mx-auto mt-6 h-6 w-6 animate-spin text-muted-foreground" />
+              </motion.div>
+            )}
+
+            {/* LEADERBOARD — full-screen animated chart shown when the host
+                broadcasts a leaderboard. Mirrors the admin presentation screen
+                but uses the compact AppFooter layout. */}
+            {phase === 'leaderboard' && leaderboard && (
+              <motion.div
+                key={`lb-${leaderboard.title}`}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.25 }}
+                className="w-full max-w-3xl"
+              >
+                <div className="mb-6 flex items-center justify-center gap-3">
+                  <Trophy className="h-7 w-7 text-primary" />
+                  <h2 className="text-2xl font-bold sm:text-3xl">
+                    {leaderboard.title || 'Leaderboard'}
+                  </h2>
+                </div>
+                <LeaderboardChart
+                  entries={leaderboard.entries}
+                  previousEntries={prevLeaderboard?.entries}
+                />
+                <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Waiting for the next question…
+                </div>
               </motion.div>
             )}
 
@@ -332,27 +395,27 @@ export function ParticipantQuestionScreen() {
                             key={`${current.questionId}-${opt.key}`}
                             className={`flex min-h-14 items-center gap-3 rounded-2xl border-2 px-4 py-3 ${
                               isCorrect
-                                ? 'border-emerald-500 bg-emerald-500/10'
+                                ? 'border-primary bg-primary/10'
                                 : isSelected
-                                  ? 'border-amber-500/60 bg-amber-500/10'
+                                  ? 'border-primary/60 bg-primary/10'
                                   : 'border-border bg-card'
                             }`}
                           >
                             <span
                               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${
                                 isCorrect
-                                  ? 'bg-emerald-500 text-white'
+                                  ? 'bg-primary text-primary-foreground'
                                   : isSelected
-                                    ? 'bg-amber-500 text-white'
+                                    ? 'bg-primary text-white'
                                     : 'bg-muted text-muted-foreground'
                               }`}
                             >
                               {opt.key}
                             </span>
                             <span className="flex-1 text-sm font-medium">{opt.label}</span>
-                            {isCorrect && <Check className="h-5 w-5 text-emerald-500" />}
+                            {isCorrect && <Check className="h-5 w-5 text-primary" />}
                             {isSelected && !isCorrect && (
-                              <X className="h-5 w-5 text-amber-500" />
+                              <X className="h-5 w-5 text-primary" />
                             )}
                           </div>
                         )

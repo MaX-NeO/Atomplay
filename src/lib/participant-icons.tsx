@@ -108,6 +108,7 @@ const HatTop         = createLucideIcon('hat-top', hatTop)
 export type ParticipantIcon = React.ComponentType<{
   className?: string
   style?: React.CSSProperties
+  strokeWidth?: number
 }>
 
 // ----------------------------------------------------------------------------

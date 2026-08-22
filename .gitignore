@@ -20,7 +20,7 @@ package-lock.json
 
 # production
 /build
-
+/deployment-docs
 # misc
 .DS_Store
 *.pem

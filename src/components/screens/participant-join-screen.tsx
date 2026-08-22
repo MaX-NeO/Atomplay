@@ -78,7 +78,7 @@ export function ParticipantJoinScreen() {
       <main className="flex flex-1 items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
           <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center bg-primary/15 text-primary shadow-[0_0_28px_-6px_oklch(0.69_0.27_350_/_0.5)]">
               <Radio className="h-7 w-7" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Join the quiz</h1>

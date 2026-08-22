@@ -42,15 +42,15 @@ export function AppHeader({ backTo, title, hideMenu }: AppHeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border/60 glass">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-40 w-full glass-bar backdrop-blur-md backdrop-saturate-150">
+      <div className="flex h-16 w-full items-center justify-between px-4 sm:px-8 lg:px-12 xl:px-16">
         <div className="flex items-center gap-3 min-w-0">
           {backTo && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate(backTo.screen)}
-              className="gap-1 shrink-0 text-muted-foreground hover:text-foreground"
+              className="gap-1 shrink-0 text-muted-foreground hover:text-primary"
             >
               <ChevronLeft className="h-4 w-4" />
               <span className="hidden sm:inline">{backTo.label}</span>
@@ -58,9 +58,9 @@ export function AppHeader({ backTo, title, hideMenu }: AppHeaderProps) {
           )}
           <button
             onClick={() => navigate(admin ? 'admin-dashboard' : 'landing')}
-            className="flex items-center gap-2 transition-opacity hover:opacity-80 shrink-0"
+            className="group flex items-center gap-2 transition-all hover:opacity-90 shrink-0"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+            <div className="flex h-8 w-8 items-center justify-center bg-primary text-primary-foreground shadow-[0_0_16px_-2px_oklch(0.69_0.27_350_/_0.5)] transition-all group-hover:shadow-[0_0_24px_-2px_oklch(0.69_0.27_350_/_0.7)] group-hover:scale-105">
               <Sparkles className="h-4 w-4" />
             </div>
             <span className="text-lg font-bold tracking-tight">Atom Play</span>

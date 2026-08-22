@@ -6,6 +6,7 @@ import { api, ApiError } from '@/lib/api-client'
 import { getSocket } from '@/lib/socket'
 import { useCountdown, formatTime } from '@/hooks/use-countdown'
 import { ResultBars } from '@/components/shared/result-bars'
+import { LeaderboardChart } from '@/components/shared/leaderboard-chart'
 import { ParticipantsSheet, type ParticipantRow } from '@/components/shared/participants-sheet'
 import { colorForParticipant, getParticipantIcon } from '@/lib/participant-icons'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,8 @@ import {
   Flag,
   Loader2,
   LogOut,
+  Maximize,
+  Minimize,
   Play,
   Radio,
   RotateCcw,
@@ -42,6 +45,9 @@ import type {
   ActivityDTO,
   ActivityCompletedPayload,
   AnswerDistribution,
+  LeaderboardEntry,
+  LeaderboardSectionDTO,
+  LeaderboardShownPayload,
   OptionKey,
   ParticipantJoinedPayload,
   ParticipantKickedPayload,
@@ -51,7 +57,7 @@ import type {
   ResultsUpdatedPayload,
 } from '@/lib/types'
 
-type Phase = 'loading' | 'lobby' | 'ready' | 'question' | 'reveal' | 'completed'
+type Phase = 'loading' | 'lobby' | 'ready' | 'question' | 'reveal' | 'leaderboard' | 'completed'
 
 interface LiveQuestion {
   questionId: string
@@ -130,10 +136,18 @@ function computeClusterScale(count: number, vw: number, vh: number): number {
 }
 
 const OPTION_TINTS: Record<OptionKey, string> = {
-  A: 'bg-chart-1/15 text-chart-1 border-chart-1/40',
-  B: 'bg-chart-2/15 text-chart-2 border-chart-2/40',
-  C: 'bg-chart-3/15 text-chart-3 border-chart-3/40',
-  D: 'bg-chart-4/15 text-chart-4 border-chart-4/40',
+  A: 'bg-chart-1/20 text-chart-1 border-chart-1/60',
+  B: 'bg-chart-2/20 text-chart-2 border-chart-2/60',
+  C: 'bg-chart-3/20 text-chart-3 border-chart-3/60',
+  D: 'bg-chart-4/20 text-chart-4 border-chart-4/60',
+}
+
+// Neon glow box-shadows per option — keyed to the same chart colors.
+const OPTION_GLOWS: Record<OptionKey, string> = {
+  A: '0 0 24px -6px oklch(0.72 0.28 350 / 0.45)',
+  B: '0 0 24px -6px oklch(0.82 0.17 195 / 0.45)',
+  C: '0 0 24px -6px oklch(0.82 0.24 140 / 0.45)',
+  D: '0 0 24px -6px oklch(0.80 0.19 75 / 0.45)',
 }
 
 function buildLiveFromDTO(q: QuestionDTO, total: number): LiveQuestion {
@@ -157,6 +171,30 @@ function labelsFromLive(q: LiveQuestion | null): Partial<Record<OptionKey, strin
   const out: Partial<Record<OptionKey, string>> = {}
   for (const o of q.options) out[o.key] = o.label
   return out
+}
+
+// Build the merged sequence of questions + leaderboards (mirrors the editor's
+// left-rail order): for each question in questionOrder asc, push the question
+// then any leaderboard whose `afterQuestionOrder` matches it, then push the
+// single default (final) leaderboard at the end (if any).
+type PresentationItem =
+  | { type: 'question'; data: QuestionDTO }
+  | { type: 'leaderboard'; data: LeaderboardSectionDTO }
+
+function buildPresentationSequence(
+  questions: QuestionDTO[],
+  leaderboards: LeaderboardSectionDTO[],
+): PresentationItem[] {
+  const items: PresentationItem[] = []
+  const sortedQuestions = [...questions].sort((a, b) => a.questionOrder - b.questionOrder)
+  for (const q of sortedQuestions) {
+    items.push({ type: 'question', data: q })
+    const lb = leaderboards.find((l) => l.afterQuestionOrder === q.questionOrder)
+    if (lb) items.push({ type: 'leaderboard', data: lb })
+  }
+  const defaultLb = leaderboards.find((l) => l.isDefault)
+  if (defaultLb) items.push({ type: 'leaderboard', data: defaultLb })
+  return items
 }
 
 export function LivePresentationScreen() {
@@ -191,6 +229,16 @@ export function LivePresentationScreen() {
     correctOption: OptionKey
     distribution: AnswerDistribution
   } | null>(null)
+  // Leaderboard phase state. `leaderboardData` holds the currently-shown
+  // leaderboard; `prevLeaderboardData` holds the previously-shown one so the
+  // LeaderboardChart can animate from old positions to new ones.
+  const [leaderboardData, setLeaderboardData] = useState<{
+    leaderboardId: string
+    title: string
+    entries: LeaderboardEntry[]
+    isDefault: boolean
+  } | null>(null)
+  const [prevLeaderboardData, setPrevLeaderboardData] = useState<typeof leaderboardData>(null)
   const [exiting, setExiting] = useState(false)
   // Confirm-and-reset dialog state. When the admin clicks "Exit" on the live
   // presentation screen, we open this dialog. On confirm, we (1) broadcast
@@ -203,6 +251,25 @@ export function LivePresentationScreen() {
   // Participants sheet — accessible throughout the activity (lobby, ready,
   // question, reveal) but NOT on the completed/results screen.
   const [sheetOpen, setSheetOpen] = useState(false)
+
+  // -------- Fullscreen toggle --------
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {})
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {})
+    }
+  }, [])
 
   // -------- REST: fetch activity + recover phase on (re)load --------
   useEffect(() => {
@@ -270,6 +337,35 @@ export function LivePresentationScreen() {
               }
               return
             }
+          }
+          // LIVE & showing a leaderboard (currentQuestionId null, currentLeaderboardId set).
+          if (a.currentLeaderboardId && !a.currentQuestionId) {
+            try {
+              const stateRes = await api.get<{
+                currentLeaderboard?: {
+                  leaderboardId: string
+                  title: string
+                  isDefault: boolean
+                  entries: LeaderboardEntry[]
+                }
+              }>(`/api/activities/${activityId}/state`)
+              if (cancelled) return
+              if (stateRes.currentLeaderboard) {
+                setLeaderboardData({
+                  leaderboardId: stateRes.currentLeaderboard.leaderboardId,
+                  title: stateRes.currentLeaderboard.title,
+                  entries: stateRes.currentLeaderboard.entries,
+                  isDefault: stateRes.currentLeaderboard.isDefault,
+                })
+                setPhase('leaderboard')
+              } else {
+                setPhase('ready')
+              }
+            } catch {
+              if (cancelled) return
+              setPhase('ready')
+            }
+            return
           }
           // LIVE but no current question — admin needs to start Q1.
           setPhase('ready')
@@ -360,6 +456,21 @@ export function LivePresentationScreen() {
     setPhase('completed')
   }, [])
 
+  // When the server broadcasts a leaderboard (either because this admin
+  // clicked "Leaderboard" or because the server is replaying state to a late
+  // joiner), stash the entries + previous entries (for animation) and switch
+  // to the leaderboard phase.
+  const onLeaderboardShown = useCallback((p: LeaderboardShownPayload) => {
+    setPrevLeaderboardData(leaderboardData) // keep previous for animation
+    setLeaderboardData({
+      leaderboardId: p.leaderboardId,
+      title: p.title,
+      entries: p.entries,
+      isDefault: p.isDefault,
+    })
+    setPhase('leaderboard')
+  }, [leaderboardData])
+
   // When a participant is kicked, remove their bubble + update the count.
   const onParticipantKicked = useCallback((p: ParticipantKickedPayload) => {
     setParticipantCount(p.count)
@@ -400,6 +511,7 @@ export function LivePresentationScreen() {
     socket.on('participant_kicked', onParticipantKicked)
     socket.on('activity_started', onActivityStarted)
     socket.on('activity_completed', onActivityCompleted)
+    socket.on('leaderboard_shown', onLeaderboardShown)
     return () => {
       socket.off('question_started', onQuestionStarted)
       socket.off('question_ended', onQuestionEnded)
@@ -408,6 +520,7 @@ export function LivePresentationScreen() {
       socket.off('participant_kicked', onParticipantKicked)
       socket.off('activity_started', onActivityStarted)
       socket.off('activity_completed', onActivityCompleted)
+      socket.off('leaderboard_shown', onLeaderboardShown)
     }
   }, [
     activityId,
@@ -418,6 +531,7 @@ export function LivePresentationScreen() {
     onParticipantKicked,
     onActivityStarted,
     onActivityCompleted,
+    onLeaderboardShown,
   ])
 
   // -------- Actions --------
@@ -445,18 +559,75 @@ export function LivePresentationScreen() {
     socket.emit('end_activity', { activityId })
   }
 
+  function emitShowLeaderboard(leaderboardId: string) {
+    if (!activityId) return
+    const socket = getSocket()
+    socket.emit('show_leaderboard', { activityId, leaderboardId })
+  }
+
+  function emitHideLeaderboard() {
+    if (!activityId) return
+    const socket = getSocket()
+    socket.emit('hide_leaderboard', { activityId })
+  }
+
+  // Find the next item in the merged sequence after the current question.
+  function getNextItemAfterQuestion(): PresentationItem | null {
+    if (!activity || !current) return null
+    const seq = buildPresentationSequence(activity.questions ?? [], activity.leaderboardSections ?? [])
+    const currentIdx = seq.findIndex(
+      (item) => item.type === 'question' && item.data.id === current.questionId,
+    )
+    if (currentIdx === -1) return null
+    return seq[currentIdx + 1] ?? null
+  }
+
+  // Find the next item (only questions are valid — leaderboards always end
+  // the round) after the currently-shown leaderboard.
+  function getNextItemAfterLeaderboard(): { type: 'question'; data: QuestionDTO } | null {
+    if (!activity || !leaderboardData) return null
+    const seq = buildPresentationSequence(activity.questions ?? [], activity.leaderboardSections ?? [])
+    const currentIdx = seq.findIndex(
+      (item) => item.type === 'leaderboard' && item.data.id === leaderboardData.leaderboardId,
+    )
+    if (currentIdx === -1) return null
+    const next = seq[currentIdx + 1]
+    return next && next.type === 'question' ? next : null
+  }
+
+  // Advances the live session. Behaviour depends on the current phase:
+  //  - leaderboard → start the next question (if any) and hide the leaderboard.
+  //  - reveal → either show the next leaderboard (if the next item is a
+  //    leaderboard) or start the next question.
   function handleNextQuestion() {
-    if (!activity || !current) return
-    const list = activity.questions ?? []
-    const next = list.find((q) => q.questionOrder === current.questionOrder + 1)
-    if (next) {
-      emitStartQuestion(next.id)
+    if (phase === 'leaderboard') {
+      const next = getNextItemAfterLeaderboard()
+      if (next) {
+        emitHideLeaderboard()
+        emitStartQuestion(next.data.id)
+      }
+      return
+    }
+    // Coming from reveal — check if next is a leaderboard or a question.
+    const nextItem = getNextItemAfterQuestion()
+    if (!nextItem) return
+    if (nextItem.type === 'leaderboard') {
+      emitShowLeaderboard(nextItem.data.id)
+    } else {
+      emitStartQuestion(nextItem.data.id)
     }
   }
 
-  function isLastQuestion(): boolean {
-    if (!activity || !current) return false
-    return current.questionOrder >= (activity.questions?.length ?? 0)
+  // Whether the current item (reveal or leaderboard) is the last item in the
+  // sequence — drives the "End activity" vs "Next" button choice.
+  function isLastItem(): boolean {
+    if (phase === 'reveal') {
+      return getNextItemAfterQuestion() === null
+    }
+    if (phase === 'leaderboard') {
+      return getNextItemAfterLeaderboard() === null
+    }
+    return false
   }
 
   function exitToDashboard() {
@@ -535,28 +706,44 @@ export function LivePresentationScreen() {
           </p>
         </div>
 
-        {/* RIGHT: participants count button — opens the ParticipantsSheet.
-            Bordered like a button, with a user icon + live count. */}
-        <button
-          type="button"
-          onClick={() => sheetAvailable && setSheetOpen(true)}
-          disabled={!sheetAvailable}
-          aria-label={`View ${participantCount} participants`}
-          className={`group flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-            sheetAvailable
-              ? 'border-white/15 bg-white/10 text-white hover:border-white/40 hover:bg-white/20'
-              : 'cursor-not-allowed border-white/10 bg-white/5 text-white/40'
-          }`}
-        >
-          <UserRound className="h-4 w-4" />
-          <span className="tabular-nums">{participantCount}</span>
-          <span className="hidden text-xs text-white/60 sm:inline">
-            {participantCount === 1 ? 'participant' : 'participants'}
-          </span>
-        </button>
+        {/* RIGHT: participants count button + fullscreen toggle */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => sheetAvailable && setSheetOpen(true)}
+            disabled={!sheetAvailable}
+            aria-label={`View ${participantCount} participants`}
+            className={`group flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+              sheetAvailable
+                ? 'border-white/15 bg-white/10 text-white hover:border-white/40 hover:bg-white/20'
+                : 'cursor-not-allowed border-white/10 bg-white/5 text-white/40'
+            }`}
+          >
+            <UserRound className="h-4 w-4" />
+            <span className="tabular-nums">{participantCount}</span>
+            <span className="hidden text-xs text-white/60 sm:inline">
+              {participantCount === 1 ? 'participant' : 'participants'}
+            </span>
+          </button>
+
+          {/* Fullscreen toggle — enter/exit browser fullscreen */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            className="group flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white transition-all hover:border-primary/50 hover:bg-primary/15 hover:text-primary hover:shadow-[0_0_18px_-4px_oklch(0.69_0.27_350_/_0.5)]"
+          >
+            {isFullscreen ? (
+              <Minimize className="h-4 w-4" />
+            ) : (
+              <Maximize className="h-4 w-4" />
+            )}
+          </button>
+        </div>
       </header>
 
-      <main className="relative flex flex-1 flex-col items-center justify-center px-4 py-8 sm:px-8">
+      <main className="relative flex flex-1 flex-col items-center justify-center px-4 py-8 sm:px-8 lg:px-12 xl:px-16">
         <AnimatePresence mode="wait">
           {/* LOADING */}
           {phase === 'loading' && (
@@ -711,7 +898,7 @@ export function LivePresentationScreen() {
                                   : 'h-6 w-6 sm:h-7 sm:w-7'
                               }
                               style={{ color: color.text }}
-                              strokeWidth={isFirst ? 2 : 2}
+                              strokeWidth={2}
                             />
                           </motion.div>
                         </motion.div>
@@ -788,7 +975,7 @@ export function LivePresentationScreen() {
               exit={{ opacity: 0, y: -16 }}
               className="w-full max-w-xl rounded-2xl border border-white/10 bg-black/30 p-6 text-center text-white backdrop-blur-md sm:p-10"
             >
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                 <Check className="h-8 w-8" />
               </div>
               <h2 className="text-2xl font-bold sm:text-3xl">Activity is live!</h2>
@@ -802,7 +989,7 @@ export function LivePresentationScreen() {
                   size="lg"
                   onClick={openExitConfirm}
                   disabled={exiting || resetting}
-                  className="gap-2 rounded-xl border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:text-red-200"
+                  className="gap-2 rounded-xl border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive/80"
                 >
                   {resetting ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -833,46 +1020,47 @@ export function LivePresentationScreen() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.25 }}
-              className="w-full max-w-5xl rounded-2xl border border-white/10 bg-black/30 p-4 text-white backdrop-blur-md sm:p-6"
+              className="w-full max-w-[1400px] border border-white/10 bg-black/40 p-6 text-white backdrop-blur-xl sm:p-10"
             >
               {/* Header: progress + timer */}
-              <div className="mb-6 flex items-center justify-between gap-3">
+              <div className="mb-8 flex items-center justify-between gap-3">
                 <Badge
                   variant="outline"
-                  className="border-white/15 bg-white/5 text-white"
+                  className="border-white/15 bg-white/5 text-base text-white"
                 >
                   Q{current.questionOrder} / {current.totalQuestions}
                 </Badge>
                 <motion.div
                   animate={timeLow ? { scale: [1, 1.08, 1] } : { scale: 1 }}
                   transition={{ duration: 0.6, repeat: timeLow ? Infinity : 0 }}
-                  className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-base font-bold tabular-nums ${
+                  className={`flex items-center gap-2 px-5 py-2 text-lg font-bold tabular-nums ${
                     timeLow
-                      ? 'bg-red-500/20 text-red-300'
+                      ? 'bg-destructive/20 text-destructive'
                       : 'bg-white/10 text-white'
                   }`}
                 >
-                  <Clock className="h-4 w-4" />
+                  <Clock className="h-5 w-5" />
                   {formatTime(remaining)}
                 </motion.div>
               </div>
 
-              {/* Question + options */}
-              <div className="grid gap-6 lg:grid-cols-[1fr_minmax(280px,360px)]">
+              {/* Question + options — BIG: question text huge, options in 2x2 grid */}
+              <div className="grid gap-8 lg:grid-cols-[1fr_minmax(320px,400px)]">
                 <div>
-                  <h2 className="mb-6 text-center text-2xl font-bold leading-tight sm:text-4xl">
+                  <h2 className="mb-8 text-center text-3xl font-bold leading-tight sm:text-5xl lg:text-6xl">
                     {current.questionText}
                   </h2>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {current.options.map((opt) => (
                       <div
                         key={opt.key}
-                        className={`flex min-h-16 items-center gap-3 rounded-2xl border-2 px-4 py-3 ${OPTION_TINTS[opt.key]}`}
+                        className={`flex min-h-24 items-center gap-4 border-2 px-6 py-5 transition-all duration-200 hover:scale-[1.02] ${OPTION_TINTS[opt.key]}`}
+                        style={{ boxShadow: OPTION_GLOWS[opt.key] }}
                       >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-sm font-bold text-white">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center bg-white/10 text-lg font-bold text-white">
                           {opt.key}
                         </span>
-                        <span className="flex-1 text-base font-medium text-white">
+                        <span className="flex-1 text-xl font-medium text-white sm:text-2xl">
                           {opt.label}
                         </span>
                       </div>
@@ -881,7 +1069,7 @@ export function LivePresentationScreen() {
                 </div>
 
                 {/* Live results panel */}
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                <div className="border border-white/10 bg-white/5 p-5 backdrop-blur">
                   <div className="mb-3 flex items-center justify-between">
                     <p className="text-xs font-semibold uppercase tracking-widest text-white/50">
                       Live results
@@ -903,32 +1091,6 @@ export function LivePresentationScreen() {
                   )}
                 </div>
               </div>
-
-              {/* Bottom controls — Exit (left) + End question/reveal (right) */}
-              <div className="mt-8 flex items-center justify-between gap-3">
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  onClick={openExitConfirm}
-                  disabled={exiting || resetting}
-                  className="gap-2 rounded-xl border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
-                >
-                  {resetting ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <LogOut className="h-5 w-5" />
-                  )}
-                  <span>Exit</span>
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={emitEndQuestion}
-                  className="gap-2"
-                >
-                  <Square className="h-4 w-4" /> End question (reveal)
-                </Button>
-              </div>
             </motion.div>
           )}
 
@@ -940,44 +1102,45 @@ export function LivePresentationScreen() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.25 }}
-              className="w-full max-w-5xl rounded-2xl border border-white/10 bg-black/30 p-4 text-white backdrop-blur-md sm:p-6"
+              className="w-full max-w-[1400px] border border-white/10 bg-black/40 p-6 text-white backdrop-blur-xl sm:p-10"
             >
-              <div className="mb-6 flex items-center justify-between gap-3">
-                <Badge variant="outline" className="border-white/15 bg-white/5 text-white">
+              <div className="mb-8 flex items-center justify-between gap-3">
+                <Badge variant="outline" className="border-white/15 bg-white/5 text-base text-white">
                   Q{current.questionOrder} / {current.totalQuestions}
                 </Badge>
-                <Badge className="border border-emerald-500/40 bg-emerald-500/20 text-emerald-300">
-                  <Check className="h-3 w-3" /> Revealed
+                <Badge className="border border-primary/40 bg-primary/20 text-base text-primary">
+                  <Check className="h-4 w-4" /> Revealed
                 </Badge>
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-[1fr_minmax(280px,360px)]">
+              <div className="grid gap-8 lg:grid-cols-[1fr_minmax(320px,400px)]">
                 <div>
-                  <h2 className="mb-6 text-center text-2xl font-bold leading-tight sm:text-4xl">
+                  <h2 className="mb-8 text-center text-3xl font-bold leading-tight sm:text-5xl lg:text-6xl">
                     {current.questionText}
                   </h2>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {current.options.map((opt) => {
                       const isCorrect = opt.key === reveal.correctOption
                       return (
                         <div
                           key={opt.key}
-                          className={`flex min-h-16 items-center gap-3 rounded-2xl border-2 px-4 py-3 ${
+                          className={`flex min-h-24 items-center gap-4 border-2 px-6 py-5 ${
                             isCorrect
-                              ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
+                              ? 'border-primary bg-primary/15 text-primary'
                               : 'border-white/10 bg-white/5 text-white/70'
                           }`}
+                          style={isCorrect ? { boxShadow: '0 0 30px -6px oklch(0.69 0.27 350 / 0.5)' } : undefined}
                         >
                           <span
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+                            className={`flex h-12 w-12 shrink-0 items-center justify-center text-lg font-bold ${
                               isCorrect
-                                ? 'bg-emerald-500 text-white'
+                                ? 'bg-primary text-primary-foreground'
                                 : 'bg-white/10 text-white/70'
                             }`}
                           >
-                            {isCorrect ? <Check className="h-4 w-4" /> : opt.key}
+                            {isCorrect ? <Check className="h-5 w-5" /> : opt.key}
                           </span>
-                          <span className="flex-1 text-base font-medium">
+                          <span className="flex-1 text-xl font-medium sm:text-2xl">
                             {opt.label}
                           </span>
                         </div>
@@ -986,7 +1149,7 @@ export function LivePresentationScreen() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+                <div className="border border-white/10 bg-white/5 p-5 backdrop-blur">
                   <div className="mb-3 flex items-center justify-between">
                     <p className="text-xs font-semibold uppercase tracking-widest text-white/50">
                       Results
@@ -1002,33 +1165,33 @@ export function LivePresentationScreen() {
                   />
                 </div>
               </div>
+            </motion.div>
+          )}
 
-              <div className="mt-8 flex items-center justify-between gap-3">
-                {/* Exit — bottom left (abort the live session) */}
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  onClick={openExitConfirm}
-                  disabled={exiting || resetting}
-                  className="gap-2 rounded-xl border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
-                >
-                  {resetting ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <LogOut className="h-5 w-5" />
-                  )}
-                  <span>Exit</span>
-                </Button>
-                {isLastQuestion() ? (
-                  <Button size="lg" variant="secondary" onClick={emitEndActivity} className="gap-2">
-                    <Flag className="h-4 w-4" /> End activity
-                  </Button>
-                ) : (
-                  <Button size="lg" onClick={handleNextQuestion} className="gap-2">
-                    Next question <ArrowRight className="h-4 w-4" />
-                  </Button>
-                )}
+          {/* LEADERBOARD phase — full-width glass card with the animated
+              LeaderboardChart. Trophy icon + title on top, then the chart.
+              `previousEntries` is passed so the chart animates from the old
+              ranking positions to the new ones (nice rank-change spring). */}
+          {phase === 'leaderboard' && leaderboardData && (
+            <motion.div
+              key={`lb-${leaderboardData.leaderboardId}`}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.25 }}
+              className="w-full max-w-[1400px] border border-white/10 bg-black/40 p-6 text-white backdrop-blur-xl sm:p-10"
+            >
+              <div className="mb-8 flex items-center justify-center gap-3">
+                <Trophy className="h-8 w-8 text-primary" />
+                <h2 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
+                  {leaderboardData.title || 'Leaderboard'}
+                </h2>
               </div>
+              <LeaderboardChart
+                entries={leaderboardData.entries}
+                previousEntries={prevLeaderboardData?.entries}
+                showScoreBreakdown
+              />
             </motion.div>
           )}
 
@@ -1076,6 +1239,60 @@ export function LivePresentationScreen() {
         </AnimatePresence>
       </main>
 
+      {/* ═══ BOTTOM CONTROL BAR ═══════════════════════════════════════════════
+          Sticky bar at the bottom of the viewport during question & reveal
+          phases. Exit button pinned to the extreme LEFT corner, Next/End
+          controls pinned to the extreme RIGHT corner. Smaller buttons. */}
+      {(phase === 'question' || phase === 'reveal' || phase === 'leaderboard') && (
+        <div className="sticky bottom-0 z-30 border-t border-white/10 bg-black/60 px-4 py-3 backdrop-blur-xl backdrop-saturate-150 sm:px-6">
+          <div className="flex w-full items-center justify-between gap-3">
+            {/* LEFT — Exit button (extreme left corner) */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openExitConfirm}
+              disabled={exiting || resetting}
+              className="gap-1.5 border border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
+            >
+              {resetting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4" />
+              )}
+              <span>Exit</span>
+            </Button>
+
+            {/* RIGHT — context-dependent:
+                - question phase → End question (reveal)
+                - reveal/leaderboard phase + last item → End activity
+                - reveal phase + next item is a leaderboard → Leaderboard button
+                - otherwise → Next question */}
+            {phase === 'question' ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={emitEndQuestion}
+                className="gap-1.5"
+              >
+                <Square className="h-3.5 w-3.5" /> End question
+              </Button>
+            ) : isLastItem() ? (
+              <Button size="sm" variant="secondary" onClick={emitEndActivity} className="gap-1.5">
+                <Flag className="h-3.5 w-3.5" /> End activity
+              </Button>
+            ) : phase === 'reveal' && getNextItemAfterQuestion()?.type === 'leaderboard' ? (
+              <Button size="sm" onClick={handleNextQuestion} className="gap-1.5">
+                <Trophy className="h-3.5 w-3.5" /> Leaderboard
+              </Button>
+            ) : (
+              <Button size="sm" onClick={handleNextQuestion} className="gap-1.5">
+                Next question <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Loading skeleton overlay (when activity is loading but phase not yet determined) */}
       {!activity && phase === 'loading' && (
         <div className="absolute inset-0 -z-10 flex items-center justify-center">
@@ -1093,7 +1310,7 @@ export function LivePresentationScreen() {
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <RotateCcw className="h-5 w-5 text-amber-500" />
+              <RotateCcw className="h-5 w-5 text-primary" />
               End activity and reset to start mode?
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -1131,7 +1348,7 @@ export function LivePresentationScreen() {
                 void handleConfirmExit()
               }}
               disabled={resetting}
-              className="rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+              className="rounded-lg bg-primary text-white hover:bg-primary/90"
             >
               {resetting ? (
                 <>

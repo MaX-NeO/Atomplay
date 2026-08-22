@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isValidOption } from '@/lib/serializers'
+import { computeScore, isValidOption } from '@/lib/serializers'
 
 // POST /api/questions/[id]/answer — REST fallback for answer submission.
 // Primary path is the socket service; both must agree on the validation rules.
@@ -62,6 +62,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const isCorrect = selectedOption === question.correctOption
+  const { score, timeTakenMs } =
+    activity.questionStartedAt !== null
+      ? computeScore({
+          isCorrect,
+          timeLimitSec: question.timeLimit,
+          questionStartedAt: activity.questionStartedAt,
+          answeredAt: now,
+        })
+      : { score: isCorrect ? 1000 : 0, timeTakenMs: 0 }
 
   try {
     await db.answer.create({
@@ -71,9 +80,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         participantId: participant.id,
         selectedOption,
         isCorrect,
+        score,
+        timeTakenMs,
       },
     })
-    return NextResponse.json({ ok: true, isCorrect })
+    return NextResponse.json({ ok: true, isCorrect, score })
   } catch (e: any) {
     // Anti-duplicate answer constraint (Participant x Question unique).
     if (e?.code === 'P2002') {

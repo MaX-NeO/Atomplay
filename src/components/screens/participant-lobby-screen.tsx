@@ -10,6 +10,7 @@ import { motion } from 'framer-motion'
 import { Radio, Users } from 'lucide-react'
 import type {
   ActivityStateResponse,
+  LeaderboardShownPayload,
   ParticipantJoinedPayload,
   QuestionStartedPayload,
   ActivityCompletedPayload,
@@ -49,6 +50,12 @@ export function ParticipantLobbyScreen() {
           navigate('participant-question')
           return
         }
+        if (state.status === 'LIVE' && state.currentLeaderboard) {
+          // Host is showing a leaderboard — go to the question screen which
+          // handles the leaderboard phase.
+          navigate('participant-question')
+          return
+        }
         if (state.status === 'LIVE') {
           // Live but no question yet — activity is starting.
           setActivityStarted(true)
@@ -80,6 +87,13 @@ export function ParticipantLobbyScreen() {
     const onQuestionStarted = (_p: QuestionStartedPayload) => {
       navigate('participant-question')
     }
+    const onLeaderboardShown = (_p: LeaderboardShownPayload) => {
+      // Host is showing a leaderboard — the participant-question screen has
+      // a 'leaderboard' phase that will render the chart. We just navigate
+      // there; the question screen will fetch the entries via its own REST
+      // sync if it misses the socket payload.
+      navigate('participant-question')
+    }
     const onActivityCompleted = (_p: ActivityCompletedPayload) => {
       navigate('participant-completed')
     }
@@ -106,6 +120,7 @@ export function ParticipantLobbyScreen() {
     }
 
     socket.on('question_started', onQuestionStarted)
+    socket.on('leaderboard_shown', onLeaderboardShown)
     socket.on('activity_completed', onActivityCompleted)
     socket.on('activity_reset', onActivityReset)
     socket.on('participant_kicked', onParticipantKicked)
@@ -114,6 +129,7 @@ export function ParticipantLobbyScreen() {
 
     return () => {
       socket.off('question_started', onQuestionStarted)
+      socket.off('leaderboard_shown', onLeaderboardShown)
       socket.off('activity_completed', onActivityCompleted)
       socket.off('activity_reset', onActivityReset)
       socket.off('participant_kicked', onParticipantKicked)
@@ -162,11 +178,11 @@ export function ParticipantLobbyScreen() {
           >
             <Card className="border-2 border-white/15 bg-white/5 text-white shadow-lg backdrop-blur-md">
               <CardContent className="py-8">
-                <div className="flex items-center justify-center gap-3 text-amber-400">
+                <div className="flex items-center justify-center gap-3 text-primary">
                   <motion.span
                     animate={{ scale: [1, 1.25, 1], opacity: [0.6, 1, 0.6] }}
                     transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                    className="h-3 w-3 bg-amber-500"
+                    className="h-3 w-3 bg-primary"
                   />
                   <span className="text-sm font-medium">
                     {activityStarted

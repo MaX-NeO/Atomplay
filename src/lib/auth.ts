@@ -26,7 +26,7 @@ export async function verifyPassword(plain: string, hashed: string): Promise<boo
 
 export function signSession(admin: { id: string; email: string; name: string; role: string }): string {
   return sign(
-    { id: admin.id, email: admin.email, name: admin.name, role: admin.role } satisfies AdminSession,
+    { id: admin.id, email: admin.email, name: admin.name, role: admin.role as AdminRole } satisfies AdminSession,
     APP_SECRET,
     { expiresIn: TOKEN_TTL_SECONDS },
   )

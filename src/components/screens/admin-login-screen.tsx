@@ -11,7 +11,6 @@ import {
 import { useAppStore } from '@/lib/store'
 import { api, ApiError } from '@/lib/api-client'
 import { AppFooter } from '@/components/shared/app-footer'
-import { ThemeToggle } from '@/components/shared/theme-toggle'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -61,35 +60,34 @@ export function AdminLoginScreen() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-stage">
+    <div className="flex min-h-screen flex-col bg-stage-app">
       {/* Minimal top bar */}
-      <header className="sticky top-0 z-30 border-b border-border/40 bg-background/60 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 glass-bar backdrop-blur-md backdrop-saturate-150">
+        <div className="flex h-16 w-full items-center justify-between px-4 sm:px-8 lg:px-12 xl:px-16">
           <button
             type="button"
             onClick={() => navigate('landing')}
-            className="flex items-center gap-2.5 text-left"
+            className="group flex items-center gap-2.5 text-left"
             aria-label="Back to home"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <div className="flex h-9 w-9 items-center justify-center bg-primary/15 text-primary transition-all group-hover:bg-primary/25 group-hover:shadow-[0_0_16px_-4px_oklch(0.69_0.27_350_/_0.5)]">
               <Sparkles className="h-5 w-5" />
             </div>
             <span className="text-lg font-semibold tracking-tight">Atom Play</span>
           </button>
-          <ThemeToggle className="h-10 w-10 rounded-xl" />
         </div>
       </header>
 
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
+      <main className="flex flex-1 items-center justify-center px-4 py-12 sm:px-8">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, ease: 'easeOut' }}
           className="w-full max-w-md"
         >
-          <Card className="rounded-2xl">
+          <Card className="glow-border">
             <CardHeader className="text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center bg-primary/15 text-primary shadow-[0_0_24px_-6px_oklch(0.69_0.27_350_/_0.5)]">
                 <LogIn className="h-6 w-6" />
               </div>
               <CardTitle className="text-2xl">Host sign in</CardTitle>
