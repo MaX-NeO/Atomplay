@@ -83,7 +83,7 @@ export function LandingScreen() {
         transition={{ duration: 0.5, ease: EASE }}
         className="sticky top-0 z-30 glass-bar backdrop-blur-md backdrop-saturate-150"
       >
-        <div className="flex h-16 w-full items-center justify-between px-4 sm:px-8 lg:px-12 xl:px-16">
+        <div className="flex h-16 w-full items-center justify-between px-1">
           <motion.div
             className="group flex items-center gap-2.5"
             whileHover={{ scale: 1.02 }}
