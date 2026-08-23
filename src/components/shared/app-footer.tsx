@@ -23,11 +23,9 @@ export function AppFooter({ compact }: AppFooterProps) {
             <Sparkles className="h-3.5 w-3.5" />
           </div>
           <span className="font-medium text-foreground">Atom Play</span>
-          <span className="text-muted-foreground/70">·</span>
-          <span>Live interactive quizzes</span>
         </div>
-        <div className="flex items-center gap-4 text-xs">
-          <span>Real-time MCQ presentation platform</span>
+        <div className="flex items-center gap-4 text-xs font-bold">
+          <span className='text-blue-600'>ATOM LABS</span> & <span className='text-purple-600'>ATOM CODE</span>
         </div>
       </div>
     </footer>

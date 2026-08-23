@@ -376,7 +376,7 @@ export function AdminDashboardScreen() {
             <div className="flex h-9 w-9 items-center justify-center bg-primary/15 text-primary transition-all group-hover:bg-primary/25 group-hover:shadow-[0_0_18px_-4px_oklch(0.69_0.27_350_/_0.5)]">
               <Sparkles className="h-5 w-5" />
             </div>
-            <span className="text-lg font-semibold tracking-tight">Atom Play</span>
+            <span className="text-lg font-semibold tracking-tight">Play</span>
           </button>
 
           <div className="flex items-center gap-2">

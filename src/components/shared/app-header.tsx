@@ -63,7 +63,7 @@ export function AppHeader({ backTo, title, hideMenu }: AppHeaderProps) {
             <div className="flex h-8 w-8 items-center justify-center bg-primary text-primary-foreground shadow-[0_0_16px_-2px_oklch(0.69_0.27_350_/_0.5)] transition-all group-hover:shadow-[0_0_24px_-2px_oklch(0.69_0.27_350_/_0.7)] group-hover:scale-105">
               <Sparkles className="h-4 w-4" />
             </div>
-            <span className="text-lg font-bold tracking-tight">Atom Play</span>
+            <span className="text-lg font-bold tracking-tight">Play</span>
           </button>
           {title && (
             <>

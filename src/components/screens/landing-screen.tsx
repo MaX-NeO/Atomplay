@@ -155,17 +155,17 @@ export function LandingScreen() {
               className="mx-auto max-w-4xl text-balance text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl xl:text-7xl"
             >
               Run live quizzes your{' '}
-              <span className="gradient-text">audience will love</span>
+              <span className="gradient-text">ATOM PLAY</span>
             </motion.h1>
 
-            <motion.p
+            {/* <motion.p
               variants={fadeUp}
               className="mx-auto mt-6 max-w-2xl text-pretty text-base text-muted-foreground sm:text-lg lg:text-xl"
             >
               Create interactive multiple-choice questions, share a 6-digit code,
               and watch answers roll in live. Engaging, instant, effortless —
               built for classrooms, meetups, and teams.
-            </motion.p>
+            </motion.p> */}
 
             <motion.div
               variants={fadeUp}

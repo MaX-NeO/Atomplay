@@ -308,7 +308,7 @@ export function AdminManagementScreen() {
               <div className="flex h-9 w-9 items-center justify-center bg-primary/15 text-primary">
                 <Sparkles className="h-5 w-5" />
               </div>
-              <span className="text-lg font-semibold tracking-tight">Atom Play</span>
+              <span className="text-lg font-semibold tracking-tight">Play</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
