@@ -154,7 +154,7 @@ export function LandingScreen() {
               id="hero-title"
               className="mx-auto max-w-4xl text-balance text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl xl:text-7xl"
             >
-              Run live quizzes your{' '}
+              Run live quizzes @{' '}
               <span className="gradient-text">ATOM PLAY</span>
             </motion.h1>
 
