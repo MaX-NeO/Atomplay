@@ -37,6 +37,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  Download,
   GripVertical,
   Loader2,
   Lock,
@@ -560,6 +561,46 @@ export function ActivityEditorScreen() {
     }
   }
 
+  // Export all questions as an importable JSON file (matches the import format).
+  function handleExportQuestions() {
+    const questions = activity?.questions ?? []
+    if (questions.length === 0) {
+      toast.error('No questions to export')
+      return
+    }
+    // Sort by questionOrder to preserve the sequence
+    const sorted = [...questions].sort((a, b) => a.questionOrder - b.questionOrder)
+    const exportData = {
+      questions: sorted.map((q) => ({
+        questionText: q.questionText,
+        optionA: q.optionA,
+        optionB: q.optionB,
+        optionC: q.optionC,
+        optionD: q.optionD,
+        correctOption: q.correctOption,
+        timeLimit: q.timeLimit,
+      })),
+    }
+    const json = JSON.stringify(exportData, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    // Sanitize the activity title for use as a filename
+    const safeTitle = (activity?.title || 'atomplay-quiz')
+      .replace(/[^a-zA-Z0-9-_]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase()
+      .slice(0, 50)
+    a.href = url
+    a.download = `${safeTitle}-questions.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${sorted.length} question${sorted.length === 1 ? '' : 's'}`)
+  }
+
   async function handleAddLeaderboard() {
     if (!activity) return
     const questions = activity.questions ?? []
@@ -852,16 +893,29 @@ export function ActivityEditorScreen() {
               <h2 className="text-sm font-semibold text-muted-foreground">
                 Questions ({questionCount})
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setImportOpen(true)}
-                className="h-7 gap-1.5 px-2 text-xs"
-                title="Import questions from JSON"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                Import
-              </Button>
+              <div className="flex gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportQuestions}
+                  disabled={questionCount === 0}
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  title="Export questions as JSON"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setImportOpen(true)}
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  title="Import questions from JSON"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Import
+                </Button>
+              </div>
             </div>
             <div className="h-[calc(100vh-14rem)] overflow-y-auto scroll-thin pr-1">
               <DndContext
@@ -1245,7 +1299,7 @@ export function ActivityEditorScreen() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-stage-stage">
+    <div className="flex min-h-screen flex-col bg-stage-activity">
       {children}
       <AppFooter />
     </div>
